@@ -4,9 +4,27 @@
 #include <tf2>
 #include <dhooks>
 #include <morecolors>
-#include <pointers>
-#include <transform>
+#include <ilib>
 #tryinclude <steamtools>
+
+#define MAXTEAMS 4
+#define MAXITEMS 5
+
+//ConVars
+ConVar RespawnTime;
+ConVar MaxScore;
+ConVar MarkCarrier;
+ConVar RespawnTimeFlag;
+ConVar FlagEnableTime;
+ConVar FlagDisableTime;
+ConVar HoldTimePoints;
+ConVar ImbalanceLimit;
+ConVar DestroySentries;
+ConVar TravelDist;
+ConVar InitTravelDelay;
+ConVar TravelInterval;
+ConVar RingHeight;
+//Handle g_DetonateTime;
 
 #define StartSound	"vo/announcer_sd_round_start03.mp3"
 #define SoundAlarm	"ambient/alarms/doomsday_lift_alarm.wav"
@@ -27,41 +45,73 @@ enum RoundState
 {
 	State_Preround,
 	State_InProgress,
-	State_Endround
+	State_Postround
+}
+
+enum struct Flag
+{
+	Pointer entity;
+	int team;
+	bool away;
+	bool active;
+	
+	void reset()
+	{
+		if (this.entity.valid())
+		{
+			AcceptEntityInput(this.entity.get(), "ForceReset");
+			this.setNeutral();
+		}
+	}
+	
+	void setNeutral()
+	{
+		
+	}
 }
 
 enum struct GameWrapper
 {
 	Client carrier;
+	Flag flag;
 
 	RoundState state;
-	bool carriermove;
-	bool endround;
+	bool carrier_move;
+	bool end_round;
 
-	int maxscore;
-	int ringheight;
+	int max_score;
+	int ring_height;
+	int team_unabalanced;
+	
+	int team_score[MAXTEAMS];
+	bool has_flag[MAXTEAMS];
 
-	float alarmdelay;
-	float balancedelay;
+	float alarm_delay;
+	float balance_delay;
+	float check_balance_delay;
 
 	//carrier settings
 	float carrier_traveldist;		//Distance the carrier must travel to keep the flag
 	float carrier_travelinterval;	//How long the carrier has to travel beyond the travel threshold
 	float carrier_traveltick;		//How frequent the travel distance is checked
-	float carrier_lastpos[3];
+	float carrier_checktime;
+	Vector3 carrier_lastpos;
 }
 GameWrapper game;
 
-enum struct Player
-{
+enum struct PlayerWrapper
+{	
 	int holdtime;
 	Pointer glow;
 	int score;
+	
 	bool can_respawn;
 	bool respawning;
-	float RespawnDelay[MAXPLAYERS+1];
-	float RespawnTime[MAXPLAYERS+1];
-	float RespawnTick[MAXPLAYERS+1];
-	float HudRefreshTick[MAXPLAYERS+1];
-	float CarrierCheckTime = FAR_FUTURE;
+	
+	float respawn_delay;
+	float respawn_time;
+	float respawn_tick;
+	float hud_refresh_tick;
+	float check_time;
 }
+PlayerWrapper PlayerInfo[MAXPLAYERS+1];
