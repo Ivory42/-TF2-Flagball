@@ -39,6 +39,18 @@ enum struct Pointer
 		}
 	}
 	
+	//Retrieves the entity index of a property from this pointer
+	int GetPropEnt(PropType type, const char[] property, int element)
+	{
+		if (this.valid())
+			return GetEntPropEnt(this.get(), type, property, _, element);
+		else
+		{
+			LogError("Pointer reference is invalid! Pointer.GetPropEnt failed!");
+			return -1;
+		}
+	}
+	
 	//Stores a vector property as a Vector3
 	void GetPropVector(PropType type, const char[] property, Vector3 vector, int element)
 	{
@@ -111,6 +123,18 @@ enum struct Client
 		else
 		{
 			LogError("Invalid Client! Client.GetProp failed!");
+			return -1;
+		}
+	}
+	
+	//Retrieves the entity index of a property from this client
+	int GetPropEnt(PropType type, const char[] property, int element)
+	{
+		if (this.valid())
+			return GetEntPropEnt(this.get(), type, property, _, element);
+		else
+		{
+			LogError("Invalid Client! Client.GetPropEnt failed!");
 			return -1;
 		}
 	}
