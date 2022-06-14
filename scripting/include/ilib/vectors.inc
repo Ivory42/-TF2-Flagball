@@ -254,16 +254,24 @@ stock void Vector_GetAngles(Vector3 vector, Rotator rot)
 
 ///
 /// Stores the client's position as a Vector3
-/// origin - true = Absolute origin | false = Eye position
 ///
 
-stock void Vector_GetClientPosition(int client, Vector3 vector, bool origin)
+stock void Vector_GetClientPosition(int client, Vector3 vector)
 {
 	float pos[3];
-	if (origin)
-		GetClientAbsOrigin(client, pos);
-	else
-		GetClientEyePosition(client, pos);
+	GetClientAbsOrigin(client, pos);
+		
+	Vector_MakeFromFloat(vector, pos);
+}
+
+///
+/// Stores the client's eye position as a Vector3
+///
+
+stock void Vector_GetClientEyePosition(int client, Vector3 vector)
+{
+	float pos[3];
+	GetClientEyePosition(client, pos);
 		
 	Vector_MakeFromFloat(vector, pos);
 }
@@ -296,17 +304,25 @@ stock void Rotator_MakeFromFloat(Rotator rot, float vec[3])
 }
 
 ///
-/// Stores the client's view angles or absolute angles as a Rotator
-/// absolute - true = Absolute angles | false = View angles
+/// Stores the client's view angles as a Rotator
 ///
 
-stock void Rotator_GetClientAngles(int client, Rotator rot, bool absolute = false)
+stock void Rotator_GetClientEyeAngles(int client, Rotator rot)
 {
 	float angle[3];
-	if (absolute)
-		GetClientEyeAngles(client, angle);
-	else
-		GetClientAbsAngles(client, angle);
+	GetClientEyeAngles(client, angle);
+		
+	Rotator_MakeFromFloat(rot, angle);
+}
+
+///
+/// Stores the client's absolute angles as a rotator
+///
+
+stock void Rotator_GetClientAbsAngles(int client, Rotator rot)
+{
+	float angle[3];
+	GetClientAbsAngles(client, angle);
 		
 	Rotator_MakeFromFloat(rot, angle);
 }
