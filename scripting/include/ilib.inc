@@ -192,25 +192,49 @@ enum struct Client
 	}
 	
 	//Retrieves this client's position as a Vector3
-	void GetPosition(Vector3 pos, bool origin)
+	void GetPosition(Vector3 pos)
 	{
 		if (this.valid())
-			return Vector_GetClientPosition(this.get(), pos, origin);
+			return Vector_GetClientPosition(this.get(), pos);
 		else
 		{
-			LogError("Invalid Client! Client.position failed!");
+			LogError("Invalid Client! Client.GetPosition failed!");
 			return -1;
 		}
 	}
 	
-	//Retrieves this client's angles as a Rotator
-	void GetAngles(Rotator rot, bool absolute)
+	//Retrieves this client's eye position as a Vector3
+	void GetEyePosition(Vector3 pos)
 	{
 		if (this.valid())
-			return Rotator_GetClientAngles(this.get(), rot, absolute);
+			return Vector_GetClientEyePosition(this.get(), pos);
 		else
 		{
-			LogError("Invalid Client! Client.angles failed!");
+			LogError("Invalid Client! Client.GetEyePosition failed!");
+			return -1;
+		}
+	}
+	
+	//Retrieves this client's eye angles as a Rotator
+	void GetEyeAngles(Rotator rot)
+	{
+		if (this.valid())
+			return Rotator_GetClienteyeAngles(this.get(), rot);
+		else
+		{
+			LogError("Invalid Client! Client.GetEyeAngles failed!");
+			return -1;
+		}
+	}
+	
+	//Retrieves this client's absolute angles as a Rotator
+	void GetAngles(Rotator rot)
+	{
+		if (this.valid())
+			return Rotator_GetClientAbsAngles(this.get(), rot);
+		else
+		{
+			LogError("Invalid Client! Client.GetAngles failed!");
 			return -1;
 		}
 	}
