@@ -79,6 +79,8 @@ enum struct Vector3
 	}
 }
 
+public Vector3 NULL_VECTOR3; //Used for null vector inputs
+
 ///
 /// Wrapper for vectors intended to be used as angles
 ///
@@ -131,14 +133,7 @@ enum struct Rotator
 	}
 }
 
-///
-/// 2-Dimensional vector object
-///
-enum struct Vector2
-{
-	float x;
-	float y;
-}
+public Rotator NULL_ROTATOR; //Used for null rotator inputs
 
 
 ///////
