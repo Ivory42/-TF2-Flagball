@@ -140,6 +140,17 @@ public Rotator NULL_ROTATOR; //Used for null rotator inputs
 /////// Vector3 Stocks
 ///////
 
+
+
+///
+/// Checks to see if the given Vector3 is null
+///
+
+stock bool Vector_IsNull(Vector3 vector)
+{
+	return (vector == NULL_VECTOR3);
+}
+
 ///
 /// Stores a Vector3 object from GetEntPropVector()
 ///
@@ -274,6 +285,17 @@ stock void Vector_GetClientEyePosition(int client, Vector3 vector)
 ///////
 /////// ROTATOR STOCKS
 ///////
+
+
+
+///
+/// Checks to see if the given Rotator is null
+///
+
+stock bool Rotator_IsNull(Rotator rot)
+{
+	return (rot == NULL_ROTATOR);
+}
 
 ///
 /// Stores a Rotator from GetEntPropVector()
