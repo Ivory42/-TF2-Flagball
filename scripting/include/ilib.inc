@@ -176,7 +176,7 @@ enum struct Client
 	}
 	
 	//Retrieves this client's position as a Vector3
-	void position(Vector3 pos, bool origin)
+	void GetPosition(Vector3 pos, bool origin)
 	{
 		if (this.valid())
 			return Vector_GetClientPosition(this.get(), pos, origin);
@@ -188,7 +188,7 @@ enum struct Client
 	}
 	
 	//Retrieves this client's angles as a Rotator
-	void angles(Rotator rot, bool absolute)
+	void GetAngles(Rotator rot, bool absolute)
 	{
 		if (this.valid())
 			return Rotator_GetClientAngles(this.get(), rot, absolute);
