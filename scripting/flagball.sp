@@ -2,22 +2,7 @@
 
 #include <flagball>
 
-#define PLUGIN_VERSION	"v0.1.3"
-
-//Round Settings
-
-
-//Player Vars
-int HoldTime[MAXPLAYERS+1];
-int PlayerGlowEnt[MAXPLAYERS+1];
-int PlayerScore[MAXPLAYERS+1];
-bool CanRespawn[MAXPLAYERS+1];
-bool Respawning[MAXPLAYERS+1];
-float RespawnDelay[MAXPLAYERS+1];
-float RespawnTime[MAXPLAYERS+1];
-float RespawnTick[MAXPLAYERS+1];
-float HudRefreshTick[MAXPLAYERS+1];
-float CarrierCheckTime = FAR_FUTURE;
+#define PLUGIN_VERSION	"v0.1.4"
 
 Handle hWinning = INVALID_HANDLE;
 int g_SetWinningTeamOffset = -1;
@@ -37,8 +22,6 @@ GAME MODE INITIALIZERS
 
 public void OnPluginStart()
 {
-	//BeamModel = PrecacheModel("materials/sprites/laser.vmt");
-	//HaloModel = PrecacheModel("materials/sprites/halo01.vmt");
 	RespawnTime = CreateConVar("fb_respawn_time", "4", "Respawn Time for players (in seconds).");
 	MaxScore = CreateConVar("fb_max_score", "180", "How long a team must hold the flag for to win (in seconds).");
 	MarkCarrier = CreateConVar("fb_mark_carrier", "0", "If 1, carrier is marked for death", _, true, 0.0, true, 1.0);
@@ -84,20 +67,17 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
-	//BeamModel = PrecacheModel("materials/sprites/laser.vmt");
-	//HaloModel = PrecacheModel("materials/sprites/halo01.vmt");
 	PrecacheSounds();
-	ServerCommand("sm_rcon tf_arena_use_queue 0");
-	ServerCommand("sm_rcon mp_teams_unbalance_limit 0");
+	
+	FindConVar("tf_arena_use_queue").Set(0, false, false);
+	ImbalanceLimit.Set(0, false, false); //temp
+	
 	int resourceEnt = GetPlayerResourceEntity();
 	if (IsValidEntity(resourceEnt))
 	{
 		SDKHook(resourceEnt, SDKHook_ThinkPost, UpdatePlayerScore);
 	}
 	
-	CreateTimer(180.0, AnnounceMessage, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
-	
-	g_ShouldEndRound = false;
 	Handle config = LoadGameConfigFile("tf2-roundend.games");
 	if (config != INVALID_HANDLE)
 	{
@@ -162,8 +142,6 @@ public void PrecacheSounds()
 public void OnClientPostAdminCheck(int client)
 {
 	ResetPlayerVars(PlayerInfo[client]);
-	PlayerInfo[client];
-	//RemoveOutline(client);
 }
 
 void ResetPlayerVars(PlayerWrapper player)
@@ -174,6 +152,7 @@ void ResetPlayerVars(PlayerWrapper player)
 	player.respawn_time = 15.0;
 	player.respawning = false;
 	player.hold_time = 0;
+	player.glow.kill();
 }
 
 public void OnClientDisconnect(int client)
@@ -184,9 +163,9 @@ public void OnClientDisconnect(int client)
 
 public Action CMDGetPos(int client, int args)
 {
-	float pos[3];
-	GetClientAbsOrigin(client, pos);
-	PrintToChat(client, "Origin: 0: %.1f, 1: %.1f, 2: %.1f", pos[0], pos[1], pos[2]);
+	Vector3 pos;
+	Vector_GetClientPosition(client, pos);
+	PrintToChat(client, "Origin: 0: %.1f, 1: %.1f, 2: %.1f", pos.x, pos.y, pos.z);
 	return Plugin_Continue;
 }
 
@@ -196,7 +175,7 @@ ROUND END CONDITIONS
 
 public MRESReturn Ball_SetWinningTeam(Handle hParams)
 {
-	if (!g_ShouldEndRound)
+	if (game.state != State_EndRound)
 	{
 		return MRES_Supercede;
 	}
@@ -230,13 +209,13 @@ public Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcas
 
 void OnPlayerDeath(Client client, PlayerWrapper player)
 {
-	int team = GetClientTeam(client.get());
+	int team = client.GetTeam();
 	if (!game.has_flag[team] && player.can_respawn)
 	{
 		player.respawn_delay = GetGameTime() + 4.0;
 		player.respawn_time = RespawnTime.IntValue;
 	}
-	else if (TF2_GetPlayerClass(victim.get()) == TFClass_Engineer)
+	else if (client.GetClass() == TFClass_Engineer)
 	{
 		if (DestroySentries.BoolValue)
 			RemoveSentries(client);
@@ -254,7 +233,7 @@ public Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcas
 		PlayerInfo[player].respawning = false;
 		PlayerInfo[player].hud_refresh_tick = 0.0;
 		if (game.state = State_InProgress)
-			TF2_AddCondition(player, TFCond_Ubercharged, 3.0);
+			client.AddCondition(TFCond_Ubercharged, 3.0);
 	}
 }
 
@@ -311,13 +290,13 @@ public void RemoveSentries(Client client) //Finds and destroys all sentry guns o
 	}
 }
 
-public void CheckPlayerHoldTime(int client)
+public void CheckPlayerHoldTime(PlayerWrapper player)
 {
-	HoldTime[client]++;
-	if (HoldTime[client] >= GetConVarInt(g_HoldTimePoints))
+	player.hold_time++;
+	if (player.hold_time >= HoldTimePoints.IntValue)
 	{
-		HoldTime[client] = 0;
-		PlayerScore[client]++;
+		player.hold_time = 0;
+		player.score++;
 	}
 }
 
@@ -327,7 +306,7 @@ ROUND SETTINGS
 
 public void EndRound(int team)
 {
-	g_ShouldEndRound = true;
+	game.state = State_EndRound;
 	switch (team)
 	{
 		case 2: ServerCommand("mp_forcewin 2");
@@ -337,7 +316,7 @@ public void EndRound(int team)
 
 public Action Ball_RoundInit(Event event, const char[] name, bool dontBroadcast)
 {
-	game.end_round = false;
+	game.state = State_Preround;
 	RemoveEntities();
 	ResetScores();
 
@@ -363,7 +342,7 @@ public Action Ball_RoundBegin(Event event, const char[] name, bool dontBroadcast
 	game.ring_height = RingHeight.FloatValue;
 	game.balance_delay = 0.0;
 	
-	MC_PrintToChatAll("{green}[FB] {default}The flag will be enabled in %.1fs!", FlagEnableTime.FloatValue);
+	MC_PrintToChatAll("{green}[FB] {default}The flag will be enabled in %.0fs!", FlagEnableTime.FloatValue);
 	CheckTeamBalance();
 	
 	return Plugin_Continue;
@@ -373,12 +352,8 @@ void RespawnFlag(Vector3 spawn, bool reset)
 {
 	if (!game.flag.entity.valid())
 		return;
-		
-	float pos[3];
-	spawnpos.toFloat(pos);
 	
-	int flag = game.flag.entity.get();
-	TeleportEntity(flag, pos, NULL_VECTOR, NULL_VECTOR);
+	int flag = game.flag.entity.teleport(spawn, NULL_ROTATOR, NULL_VECTOR3);
 	
 	if (reset)
 		AcceptEntityInput(flag, "Disable");
@@ -545,9 +520,7 @@ void CreateRingForClient(int client, int team, float duration)
 	//Create multiple ring "layers" to make it more visible
 	for (int i = 1; i <= totalRings; i++)
 	{
-		float pos[3];
-		position.toFloat(pos);
-		TE_SetupBeamRingPoint(pos, size-1.0, size, PrecacheModel("materials/sprites/laser.vmt"), PrecacheModel("materials/sprites/halo01.vmt"), 0, 0, duration, 150.0, 0.5, color, 50, 0);
+		TE_SetupBeamRingPoint(position.ToFloat(), size-1.0, size, PrecacheModel("materials/sprites/laser.vmt"), PrecacheModel("materials/sprites/halo01.vmt"), 0, 0, duration, 150.0, 0.5, color, 50, 0);
 		TE_SendToClient(client);
 		position.z += 100.0;
 	}
@@ -574,7 +547,7 @@ public void Ball_FlagDropped(const char[] output, int caller, int victim, float 
 
 		TF2_RemoveCondition(game.carrier.get(), TFCond_MarkedForDeath);
 		game.flag.active = false;
-		game.flag.carrier.userid = -1;
+		game.carrier.userid = -1;
 		game.flag.team = 0;
 		game.flag.away = false;
 		InvalidateTravelTimers();
@@ -678,8 +651,8 @@ void CheckCarrierShouldMove()
 	if (game.carrier_traveltick <= GetGameTime())
 	{
 		Vector3 position;
-		game.carrier.position(position, true);
-		if (position.distanceTo(game.carrier_lastpos) > game.carrier_traveldist)
+		game.carrier.GetPosition(position, true);
+		if (position.DistanceTo(game.carrier_lastpos) > game.carrier_traveldist)
 		{
 			//PrintCenterText(FlagCarrier, "");
 			game.carrier_shouldmove = false;
@@ -695,42 +668,41 @@ void CheckCarrierShouldMove()
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if (RespawnTime[client] > 0.0 && RoundInProgress && GetClientTeam(client) >= 2 && Respawning[client])
+	if (Player[client].respawn_time > 0.0 && game.state == State_InProgress && GetClientTeam(client) >= 2 && player[client].respawning)
 	{
-		if (RespawnTick[client] <= GetEngineTime())
+		if (Player[client].respawn_tick <= GetGameTime())
 		{
-			RespawnTime[client] -= 0.5;
+			Player[client].respawn_time -= 0.5;
 			char respawnText[64];
-			Format(respawnText, sizeof respawnText, "Respawn in %.0f second%s", RespawnTime[client], CheckRespawnTime(client) ? "" : "s");
+			Format(respawnText, sizeof respawnText, "Respawn in %.0f second%s", Player[client].respawn_time, CheckRespawnTime(Player[client]) ? "" : "s");
 			if (RespawnTime[client] < 1.0)
 			{
 				Format(respawnText, sizeof respawnText, "Prepare to respawn...");
 			}
 			SetHudTextParams(-1.0, 0.7, 0.5, 255, 255, 255, 0);
-			if (RespawnTime[client] <= 50.0)
+			if (Player[client].respawn_time <= 50.0)
 				ShowSyncHudText(client, RespawnHud, "%s", respawnText);
-			RespawnTick[client] = GetEngineTime() + 0.5;
-			if (RespawnTime[client] <= 0.0 && !IsPlayerAlive(client))
+			Player[client].respawn_tick = GetGameTime() + 0.5;
+			if (Player[client].respawn_time <= 0.0 && !IsPlayerAlive(client))
 			{
 				TF2_RespawnPlayer(client);
 				if (!IsPlayerAlive(client)) //Reset respawn time in case player does not respawn
 				{
-					RespawnTime[client] = GetConVarFloat(g_RespawnTime);
-					RespawnTick[client] = FAR_FUTURE;
+					Player[client].respawn_time = RespawnTime.FloatValue;
+					Player[client].respawn_tick = FAR_FUTURE;
 				}
 			}
 		}
 	}
-	else if (!IsPlayerAlive(client) && CanRespawn[client])
+	else if (!IsPlayerAlive(client) && Player[client].can_respawn)
 	{
-		if (RespawnDelay[client] <= GetEngineTime())
+		if (Player[client].respawn_delay <= GetGameTime())
 		{
-			//RespawnTime[client] = GetConVarFloat(g_RespawnTime);
-			RespawnTick[client] = GetEngineTime() + 0.5;
-			Respawning[client] = true;
+			Player[client].respawn_tick = GetGameTime() + 0.5;
+			Player[client].respawning = true;
 		}
 	}
-	if (RoundInProgress && HudRefreshTick[client] <= GetEngineTime())
+	if (game.state == State_InProgress && Player[client].hud_refresh_tick <= GetGameTime())
 	{
 		char InfoText[64];
 		int team = GetClientTeam(client);
@@ -738,23 +710,23 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			if (team == 2)
 			{
-				Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", Score[team], Score[3], MaxScore, FlagActive ? "Active" : "Inactive");
+				Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", game.team_score[team], game.team_score[3], game.max_score, game.flag.active ? "Active" : "Inactive");
 				SetHudTextParams(-1.0, 0.18, 0.5, 255, 0, 0, 255);
 			}
 			else if (team == 3)
 			{
-				Format(InfoText, sizeof InfoText, "BLU: %i | RED: %i\nScore to win: %i\nFlag Status: %s", Score[team], Score[2], MaxScore, FlagActive ? "Active" : "Inactive");
+				Format(InfoText, sizeof InfoText, "BLU: %i | RED: %i\nScore to win: %i\nFlag Status: %s", game.team_score[team], game.team_score[2], game.max_score, game.flag.active ? "Active" : "Inactive");
 				SetHudTextParams(-1.0, 0.18, 0.5, 0, 110, 255, 255);
 			}
 			ShowSyncHudText(client, ScoreHud, "%s", InfoText);
 		}
 		else if (team == 1 || team == 0)
 		{
-			Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", Score[2], Score[3], MaxScore, FlagActive ? "Active" : "Inactive");
+			Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", game.steam_score[2], game.team_score[3], game.max_score, game.flag.active ? "Active" : "Inactive");
 			SetHudTextParams(-1.0, 0.18, 0.5, 255, 255, 255, 255);
 			ShowSyncHudText(client, ScoreHud, "%s", InfoText);
 		}
-		HudRefreshTick[client] = GetEngineTime() + 0.5;
+		Player[client].hud_refresh_tick = GetGameTime() + 0.5;
 	}
 }
 
@@ -763,51 +735,43 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 STOCKS AND EQUIPMENT FUNCTIONS
 *************************************************/
 
-stock void SetupRespawnsForFlagTeam(int iTeam)
+stock void SetupRespawnsForFlagTeam(int team)
 {
-	for (int iCl = 1; iCl <= MaxClients; iCl++)
+	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (IsValidClient(iCl))
+		if (IsValidClient(i))
 		{
-			if (GetClientTeam(iCl) == iTeam)
+			if (GetClientTeam(i) == team)
 			{
-				if (IsPlayerAlive(iCl))
-					CanRespawn[iCl] = true;
+				if (IsPlayerAlive(i))
+					Player[i].can_respawn = true;
 				else
 				{
-					RespawnDelay[iCl] = GetEngineTime() + 0.1;
-					RespawnTime[iCl] = GetConVarFloat(g_RespawnTimeFlag);
-					CanRespawn[iCl] = true;
+					Player[i].respawn_delay = GetGameTime() + 0.1;
+					Player[i].respawn_time = RespawnTimeFlag.FloatValue;
+					Player[i].can_respawn = true;
 				}
 			}
 		}
 	}
 }
 
-stock bool CheckRespawnTime(int cl)
+stock bool CheckRespawnTime(PlayerWrapper client)
 {
-	if (1.0 <= RespawnTime[cl] < 2.0)
+	if (1.0 <= client.respawn_time < 2.0)
 		return true;
 	return false;
 }
 
-stock bool IsValidClient(int iClient)
+stock bool IsValidClient(int client)
 {
-    if (iClient <= 0 || iClient > MaxClients || !IsClientInGame(iClient))
-    {
-        return false;
-    }
-    if (IsClientSourceTV(iClient) || IsClientReplay(iClient))
-    {
-        return false;
-    }
-    return true;
-}
-
-stock FindEntityByClassname2(startEnt, const String:classname[])
-{
-	while (startEnt > -1 && !IsValidEntity(startEnt)) startEnt--;
-	return FindEntityByClassname(startEnt, classname);
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+		return false;
+	
+	if (IsClientSourceTV(client) || IsClientReplay(client))
+		return false;
+	
+	return true;
 }
 
 stock void PlaySoundToAllClients(const char[] sound, int team = 0)
@@ -826,22 +790,20 @@ stock void PlaySoundToAllClients(const char[] sound, int team = 0)
 
 stock int GetOppositeTeam(int team)
 {
-	if (team == 2) return 3;
-	if (team == 3) return 2;
+	if (team == 2)
+		return 3;
+		
+	if (team == 3)
+		return 2;
+		
 	return 0;
 }
 
-stock void SetFlagNeutral(int flag)
-{
-	SetVariantInt(0);
-	AcceptEntityInput(flag, "SetTeam");
-}
-
-stock float[] GetBallSpawn()
+void GetBallSpawn()
 {
 	int entity, points, pointIndex, spawnpoint[8];
 	float pos[3];
-	while ((entity = FindEntityByClassname2(entity, "team_control_point")) != -1 && IsValidEntity(entity))
+	while ((entity = FindEntityByClassname(entity, "team_control_point")) != -1)
 	{
 		points++;
 		spawnpoint[points] = entity;
@@ -860,112 +822,75 @@ stock float[] GetBallSpawn()
 
 stock void RemoveEntities()
 {
-	int ent = MaxClients+1;
-	while ((ent = FindEntityByClassname2(ent, "func_respawnroom")) != -1)                             // Entity may be hooked, but I don't think that matters
-	{                                                                                                 // If bots are enabled, it will bitch about pathing, but it's ok.
-		//AcceptEntityInput(ent, "Kill");                                                           // Can't seem to block it's function with plugin_handled
-	}
-	ent = MaxClients+1;
-	while ((ent = FindEntityByClassname2(ent, "func_regenerate")) != -1)
-	{
-		//AcceptEntityInput(ent, "Kill");
-	}
-	ent = MaxClients+1;
-	while ((ent = FindEntityByClassname2(ent, "tf_logic_arena")) !=-1 && IsValidEntity(ent))
-	{
+	int ent = MaxClients + 1;
+	while ((ent = FindEntityByClassname(ent, "tf_logic_arena")) !=-1)
 		DispatchKeyValue(ent, "CapEnableDelay", "9999.0");
-	}
-	ent = MaxClients+1;
-	while ((ent = FindEntityByClassname2(ent, "trigger_capture_area")) != -1 && IsValidEntity(ent))
-	{
+		
+	ent = MaxClients + 1;
+	while ((ent = FindEntityByClassname(ent, "trigger_capture_area")) != -1)
 		AcceptEntityInput(ent, "Disable");
-	}
-	ent = MaxClients+1;
-	while ((ent = FindEntityByClassname2(ent, "team_control_point")) != -1 && IsValidEntity(ent))
+		
+	ent = MaxClients + 1;
+	while ((ent = FindEntityByClassname(ent, "team_control_point")) != -1)
 	{
 		SetVariantInt(1);
 		AcceptEntityInput(ent, "SetLocked");
 	}
 }
 
-stock void OutlineClient(int client)
+void OutlineClient(Client client, PlayerWrapper player)
 {
-	if (IsValidClient(client))
+	if (client.valid())
 	{
-		if(!TF2_HasGlow(client))
+		if(!TF2_HasGlow(client.get()))
 		{
-			int iGlow = TF2_CreateGlow(client);
-			if(IsValidEntity(iGlow))
+			player.glow.set(TF2_CreateGlow(client.get()))
+			if(player.glow.valid())
 			{
-				PlayerGlowEnt[client] = EntIndexToEntRef(iGlow);
-				SDKHook(client, SDKHook_PreThink, OnPlayerThink);
+				int color[4], team;
+				team = GetClientTeam(client.get());
+				switch (team)
+				{
+					case 2: color = {255, 0, 0, 255};
+					case 3: color = {0, 0, 255, 255};
+				}
+
+				SetVariantColor(color);
+				AcceptEntityInput(player.glow.get(), "SetGlowColor");
 			}
 		}
 	}
 }
 
-stock void RemoveOutline(int client)
+stock int TF2_CreateGlow(int client)
 {
-	int iGlow = EntRefToEntIndex(PlayerGlowEnt[client]);
-	if(iGlow != INVALID_ENT_REFERENCE)
-	{
-		AcceptEntityInput(iGlow, "Kill");
-		PlayerGlowEnt[client] = INVALID_ENT_REFERENCE;
-		SDKUnhook(client, SDKHook_PreThink, OnPlayerThink);
-	}
-}
+	char name[64];
+	GetEntPropString(client, Prop_Data, "m_iName", name, sizeof name);
 
-public Action OnPlayerThink(int client)
-{
-	int iGlow = EntRefToEntIndex(PlayerGlowEnt[client]);
-	if(iGlow != INVALID_ENT_REFERENCE)
-	{
-		int color[4], team;
-		team = GetClientTeam(client);
-		switch (team)
-		{
-			case 2: color = {255, 0, 0, 255};
-			case 3: color = {0, 0, 255, 255};
-		}
+	char target[64];
+	Format(target, sizeof target, "player%i", client);
+	DispatchKeyValue(client, "targetname", target);
 
-		SetVariantColor(color);
-		AcceptEntityInput(iGlow, "SetGlowColor");
-	}
-}
+	int glow = CreateEntityByName("tf_glow");
+	DispatchKeyValue(glow, "target", target);
+	DispatchKeyValue(glow, "Mode", "0");
+	DispatchSpawn(glow);
 
-stock int TF2_CreateGlow(int iEnt)
-{
-	char oldEntName[64];
-	GetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName, sizeof(oldEntName));
-
-	char strName[126], strClass[64];
-	GetEntityClassname(iEnt, strClass, sizeof(strClass));
-	Format(strName, sizeof(strName), "%s%i", strClass, iEnt);
-	DispatchKeyValue(iEnt, "targetname", strName);
-
-	int ent = CreateEntityByName("tf_glow");
-	DispatchKeyValue(ent, "targetname", "RainbowGlow");
-	DispatchKeyValue(ent, "target", strName);
-	DispatchKeyValue(ent, "Mode", "0");
-	DispatchSpawn(ent);
-
-	AcceptEntityInput(ent, "Enable");
+	AcceptEntityInput(glow, "Enable");
 
 	//Change name back to old name because we don't need it anymore.
-	SetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName);
+	SetEntPropString(client, Prop_Data, "m_iName", name);
 
-	return ent;
+	return glow;
 }
 
-stock bool TF2_HasGlow(int iEnt)
+stock bool TF2_HasGlow(int client)
 {
 	int index = -1;
 	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
 	{
-		if (GetEntPropEnt(index, Prop_Send, "m_hTarget") == iEnt)
-		{
+		if (GetEntPropEnt(index, Prop_Send, "m_hTarget") == client)
 			return true;
-		}
 	}
 
 	return false;
@@ -973,29 +898,34 @@ stock bool TF2_HasGlow(int iEnt)
 
 stock void CheckTeamBalance()
 {
-	if (GetConVarInt(g_ImbalanceLimit) == 0) return; //Do not balance teams if set to 0
+	if (ImbalanceLimit.IntVlue == 0) //Do not balance teams if set to 0
+		return;
+		
 	//PrintToChatAll("Checking teams...");
 	int TeamCount[MAXTEAMS] = {0, 0, 0, 0};
 	int Unbalance;
+	int limit = ImbalanceLimit.IntValue;
 	for (int player = 1; player <= MaxClients; player++)
 	{
 		if (IsValidClient(player))
 		{
-			int teami = GetClientTeam(player);
-			if (teami >= 2)
-				TeamCount[teami]++;
+			int team = GetClientTeam(player);
+			if (team >= 2)
+				TeamCount[team]++;
 		}
 	}
+	
 	//PrintToChatAll("Red Team Count: %i\nBlue Team Count: %i", TeamCount[2], TeamCount[3]);
-	if (TeamCount[2] - TeamCount[3] >= GetConVarInt(g_ImbalanceLimit)) //Red team has too many players
+	if (TeamCount[2] - TeamCount[3] >= limit) //Red team has too many players
 	{
 		//PrintToChatAll("Red team Has %i players over blue... balancing teams...", TeamCount[2] - TeamCount[3]);
 		Unbalance = 2;
 	}
-	else if (TeamCount[3] - TeamCount[2] >= GetConVarInt(g_ImbalanceLimit)) // Blue team has too many players
+	else if (TeamCount[3] - TeamCount[2] >= limit) // Blue team has too many players
 	{
 		Unbalance = 3;
 	}
+	
 	else
 	{
 		//PrintToChatAll("Teams are already balanced");
@@ -1005,31 +935,31 @@ stock void CheckTeamBalance()
 	{
 		case 2:
 		{
-			if (BalanceDelay <= GetEngineTime())
+			if (game.balance_delay <= GetGameTime())
 			{
-				iTeamUnbalanced = 3;
-				CheckBalanceDelay = GetEngineTime() + 5.0;
+				game.team_unbalanced = 3;
+				game.check_balance_delay = GetGameTime() + 5.0;
 
-				CPrintToChatAll("{green}[FB]{default} Team imbalance detected, teams will be balanced in 5 seconds...");
+				MC_PrintToChatAll("{green}[FB]{default} Team imbalance detected, teams will be balanced in 5 seconds...");
 				//CreateTimer(0.2, TimerCheckBalance, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 			}
 		}
 		case 3:
 		{
-			if (BalanceDelay <= GetEngineTime())
+			if (game.balance_delay <= GetGameTime())
 			{
-				iTeamUnbalanced = 2;
-				CheckBalanceDelay = GetEngineTime() + 5.0;
+				game.team_unbalanced = 2;
+				game.check_balance_delay = GetGameTime() + 5.0;
 
-				CPrintToChatAll("{green}[FB]{default} Team imbalance detected, teams will be balanced in 5 seconds...");
+				MC_PrintToChatAll("{green}[FB]{default} Team imbalance detected, teams will be balanced in 5 seconds...");
 				//CreateTimer(0.2, TimerCheckBalance, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 			}
 		}
 	}
-	BalanceDelay = GetEngineTime() + 6.0;
+	game.balance_delay = GetGameTime() + 6.0;
 }
 
-stock bool BalanceTeams(int teamnum)
+bool BalanceTeams(int teamnum)
 {
 	int PlayerArray[MAXPLAYERS+1], count;
 
@@ -1041,7 +971,7 @@ stock bool BalanceTeams(int teamnum)
 			if (IsValidClient(client) && GetClientTeam(client) >= 2)
 			{
 				int team = GetClientTeam(client);
-				if (team != teamnum && client != FlagCarrier)
+				if (team != teamnum && client != game.carrier.get())
 				{
 					PlayerArray[count] = client;
 					count++;
@@ -1066,9 +996,9 @@ stock bool BalanceTeams(int teamnum)
 	}
 	else //Teams are balanced
 	{
-		CPrintToChatAll("{green}[FB]{default} Teams have been balanced.");
-		iTeamUnbalanced = 0;
-		CheckBalanceDelay = FAR_FUTURE;
+		MC_PrintToChatAll("{green}[FB]{default} Teams have been balanced.");
+		game.team_unbalanced = 0;
+		game.check_balance_delay = FAR_FUTURE;
 	}
 	return false;
 }
@@ -1080,17 +1010,17 @@ stock bool TeamsUnbalanced()
 	{
 		if (IsValidClient(player))
 		{
-			int teami = GetClientTeam(player);
-			if (teami >= 2)
-				TeamCount[teami]++;
+			int team = GetClientTeam(player);
+			if (team >= 2)
+				TeamCount[team]++;
 		}
 	}
 	//PrintToChatAll("Red Team Count: %i\nBlue Team Count: %i", TeamCount[2], TeamCount[3]);
-	if (TeamCount[2] - TeamCount[3] >= GetConVarInt(g_ImbalanceLimit)) //Red team has too many players
+	if (TeamCount[2] - TeamCount[3] >= ImbalanceLimit.IntValue) //Red team has too many players
 	{
 		return true;
 	}
-	else if (TeamCount[3] - TeamCount[2] >= GetConVarInt(g_ImbalanceLimit)) // Blue team has too many players
+	else if (TeamCount[3] - TeamCount[2] >= ImbalanceLimit.IntValue) // Blue team has too many players
 	{
 		return true;
 	}
