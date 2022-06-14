@@ -10,11 +10,15 @@ enum struct Vector3
 	float z;
 	
 	//Converts this Vector into a float array
-	void toFloat(float result[3])
+	float[] ToFloat()
 	{
+		float result[3];
+		
 		result[0] = this.x;
 		result[1] = this.y;
 		result[2] = this.z;
+		
+		return result;
 	}
 	
 	//Gets the length of this vector
@@ -27,7 +31,7 @@ enum struct Vector3
 	}
 	
 	//Calculates the distance to another Vector3
-	float distanceTo(Vector3 destination, bool squared = false)
+	float DistanceTo(Vector3 destination, bool squared = false)
 	{
 		float origin[3], dest[3];
 		this.toFloat(origin);
@@ -85,15 +89,19 @@ enum struct Rotator
 	float roll;
 	
 	//Converts this Rotator into a float array
-	void toFloat(float result[3])
+	float[] ToFloat()
 	{
+		float result[3];
+		
 		result[0] = this.pitch;
 		result[1] = this.yaw;
 		result[2] = this.roll;
+		
+		return result;
 	}
 	
 	//Retrieves the forward vector of this rotator as a Vector3
-	void getForwardVector(Vector3 vector)
+	void GetForwardVector(Vector3 vector)
 	{
 		float vec[3], vecF[3];
 		this.toFloat(vec);
@@ -103,7 +111,7 @@ enum struct Rotator
 	}
 	
 	//Retrieves the right vector of this rotator as a Vector3
-	void getRightVector(Vector3 vector)
+	void GetRightVector(Vector3 vector)
 	{
 		float vec[3], vecF[3];
 		this.toFloat(vec);
@@ -113,7 +121,7 @@ enum struct Rotator
 	}
 	
 	//Retrieves the right vector of this rotator as a Vector3
-	void getUpVector(Vector3 vector)
+	void GetUpVector(Vector3 vector)
 	{
 		float vec[3], vecF[3];
 		this.toFloat(vec);
