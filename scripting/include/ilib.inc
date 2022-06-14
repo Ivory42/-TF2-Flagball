@@ -27,6 +27,13 @@ enum struct Pointer
 		return (IsValidEntity(entity) && entity > MaxClients);
 	}
 	
+	//Marks this pointer for removal
+	void kill()
+	{
+		if (this.valid())
+			RemoveEntity(this.get());
+	}
+	
 	//Retrieves an integer property from this pointer
 	int GetProp(PropType type, const char[] property, int element)
 	{
@@ -113,6 +120,15 @@ enum struct Client
 			return IsClientInGame(client);
 			
 		return false;
+	}
+	
+	//Retrieves this client's team
+	int GetTeam()
+	{
+		if (this.valid())
+			return GetClientTeam(this.get());
+			
+		return -1;
 	}
 	
 	//Retrieves an integer property from this client
