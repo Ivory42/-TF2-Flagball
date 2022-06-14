@@ -45,10 +45,11 @@ enum RoundState
 {
 	State_Preround,
 	State_InProgress,
+	State_EndRound,
 	State_Postround
 }
 
-enum struct Flag
+enum struct FlagWrapper
 {
 	Pointer entity;
 	int team;
@@ -64,20 +65,23 @@ enum struct Flag
 		}
 	}
 	
-	void setNeutral()
+	void SetNeutral()
 	{
-		
+		if (this.entity.valid())
+		{
+			SetVariantInt(0);
+			AcceptEntityInput(this.entity.get(), "SetTeam");
+		}
 	}
 }
 
 enum struct GameWrapper
 {
 	Client carrier;
-	Flag flag;
+	FlagWrapper flag;
 
 	RoundState state;
 	bool carrier_move;
-	bool end_round;
 
 	int max_score;
 	int ring_height;
@@ -101,7 +105,7 @@ GameWrapper game;
 
 enum struct PlayerWrapper
 {	
-	int holdtime;
+	int hold_time;
 	Pointer glow;
 	int score;
 	
