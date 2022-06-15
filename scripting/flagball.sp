@@ -201,39 +201,43 @@ public Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcas
 	Client victim;
 	victim.userid = event.GetInt("userid");
 
-	if (victim.valid())
-		OnPlayerDeath(victim, PlayerInfo[victim.get()]);
-		
-	return Plugin_Continue;
-}
-
-void OnPlayerDeath(Client client, PlayerWrapper player)
-{
+	PlayerWrapper player = GetPlayer(client);
+	
 	int team = client.GetTeam();
 	if (!game.has_flag[team] && player.can_respawn)
 	{
 		player.respawn_delay = GetGameTime() + 4.0;
 		player.respawn_time = RespawnTime.IntValue;
 	}
+	
+	//Update our struct to reflect the changes made
+	SetPlayer(client, player);
+	
 	else if (client.GetClass() == TFClass_Engineer)
 	{
 		if (DestroySentries.BoolValue)
 			RemoveSentries(client);
 	}
+		
+	return Plugin_Continue;
 }
 
 public Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcast)
 {
 	Client client;
 	client.userid = event.GetInt("userid");
+	
+	PlayerWrapper player = GetPlayer(client);
 
 	if (client.valid())
 	{
-		int player = client.get();
-		PlayerInfo[player].respawning = false;
-		PlayerInfo[player].hud_refresh_tick = 0.0;
+		//int player = client.get();
+		player.respawning = false;
+		player.hud_refresh_tick = 0.0;
 		if (game.state = State_InProgress)
 			client.AddCondition(TFCond_Ubercharged, 3.0);
+			
+		SetPlayer(client, player);
 	}
 }
 
@@ -241,15 +245,16 @@ public Action Ball_JoinTeam(Event event, const char[] name, bool dontBroadcast)
 {
 	Client client;
 	client.userid = event.GetInt("userid");
+	
 	int team = event.GetInt("team");
 	
 	if (game.state == State_InProgress && team < 2)
 		CheckTeamBalance();
 		
 	if (!game.has_flag[team])
-		SetPlayerRespawnTime(PlayerInfo[client.get()], RespawnTime.FloatValue);
+		SetPlayerRespawnTime(GetPlayer(client), RespawnTime.FloatValue);
 	else
-		DisablePlayerRespawn(PlayerInfo[client.get()]);
+		DisablePlayerRespawn(GetPlayer(client));
 }
 
 void SetPlayerRespawnTime(PlayerWrapper player, float time)
@@ -279,6 +284,9 @@ public void ToggleRespawns(int team_id, bool enable)
 
 public void RemoveSentries(Client client) //Finds and destroys all sentry guns owned by a player
 {
+	if (!client.valid())
+		return;
+		
 	int sentry = MaxClients + 1;
 	while((sentry = FindEntityByClassname(sentry, "obj_sentrygun")) != -1)
 	{
@@ -353,10 +361,10 @@ void RespawnFlag(Vector3 spawn, bool reset)
 	if (!game.flag.entity.valid())
 		return;
 	
-	int flag = game.flag.entity.teleport(spawn, NULL_ROTATOR, NULL_VECTOR3);
+	game.flag.entity.teleport(spawn, NULL_ROTATOR, NULL_VECTOR3);
 	
 	if (reset)
-		AcceptEntityInput(flag, "Disable");
+		game.flag.entity.input("Disable");
 }
 
 public void ResetScores()
@@ -412,7 +420,6 @@ public void SetTimerValue(int time)
 	}
 	SetVariantInt(time);
 	AcceptEntityInput(timer, "SetTime");
-	SetVariantInt(time); //Max time for timer
 	AcceptEntityInput(timer, "SetMaxTime");
 	AcceptEntityInput(timer, "Resume");
 	HookEntityOutput("team_round_timer", "OnFinished", TimerExpire); //Hook for when the timer ends
@@ -435,17 +442,14 @@ public void TimerExpire(const char[] output, int caller, int victim, float delay
 
 public Action EnableFlag(Handle timer)
 {
-	if (game.flag.entity.valid())
-	{
-		int flag = game.flat.entity.get();
-		AcceptEntityInput(flag, "Enable");
-		PlaySoundToAllClients(SoundFlagActivate);
-		PrintCenterTextAll("Flag Enabled!");
+	game.flag.entity.input("Enable");
+	PlaySoundToAllClients(SoundFlagActivate);
+	PrintCenterTextAll("Flag Enabled!");
 
-		SetVariantInt(15);
-		AcceptEntityInput(flag, "SetReturnTime");
-		game.flag.active = true;
-	}
+	SetVariantInt(15);
+	game.flag.entity.input("SetReturnTime");
+	game.flag.active = true;
+
 	return Plugin_Stop;
 }
 
@@ -474,7 +478,7 @@ public Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
 			int skin = GetOppositeTeam(team);
 			ToggleRespawns(team, false);
 			SetVariantInt(skin);
-			AcceptEntityInput(game.flag.entity.get(), "SetTeam");
+			game.flag.entity.input("SetTeam");
 			if (MarkCarrier.BoolValue)
 				TF2_AddCondition(client, TFCond_MarkedForDeath, TFCondDuration_Infinite);
 				
