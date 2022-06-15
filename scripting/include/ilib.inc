@@ -1,12 +1,13 @@
 #include <tf2>
 #include <tf2_stocks>
+#include <sdktools>
 #include "ilib/vector.inc"
 
 ///
 /// Entity Wrapper for storing references
 ///
 
-enum struct Pointer
+enum struct EntityWrapper
 {
 	int ref;
 	
@@ -28,6 +29,17 @@ enum struct Pointer
 		int entity = this.get();
 		return (IsValidEntity(entity) && entity > MaxClients);
 	}
+	
+	//Fires an input on this entity
+	void input(const char[] command, int activator = -1, int caller = -1, int id = 0)
+	{
+		if (this.valid())
+		{
+			int entity = this.get();
+			AcceptEntityInput(entity, command, activator, caller, id);
+		}
+	}
+	
 	
 	//Teleports this entity
 	void teleport(Vector3 pos, Rotator rot, Vector3 vel)
