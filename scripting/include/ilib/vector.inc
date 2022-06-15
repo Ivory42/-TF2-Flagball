@@ -8,50 +8,50 @@ enum struct Vector3
 	float x;
 	float y;
 	float z;
-	
+
 	//Converts this Vector into a float array
 	float[] ToFloat()
 	{
 		float result[3];
-		
+
 		result[0] = this.x;
 		result[1] = this.y;
 		result[2] = this.z;
-		
+
 		return result;
 	}
-	
+
 	//Gets the length of this vector
 	float length()
 	{
 		float vec[3];
 		this.toFloat(vec);
-		
+
 		return GetVectorLength(vec);
 	}
-	
+
 	//Calculates the distance to another Vector3
 	float DistanceTo(Vector3 destination, bool squared = false)
 	{
 		float origin[3], dest[3];
 		this.toFloat(origin);
 		destination.toFloat(dest);
-		
+
 		return GetVectorDistance(origin, dest, squared);
 	}
-	
+
 	//Adds a Vector3 together with this object
 	void add(Vector3 vector)
 	{
 		Vector_Add(this, vector, this);
 	}
-	
+
 	//Subtracts a Vector3 from this object
 	void subtract(Vector3 vector)
 	{
 		Vector_Subtract(this, vector, this);
 	}
-	
+
 	//Scales this vector by the given value
 	void scale(float value)
 	{
@@ -59,17 +59,17 @@ enum struct Vector3
 		this.y *= value;
 		this.z *= value;
 	}
-	
+
 	//Normalizes this vector
 	void normalize()
 	{
 		float vec[3];
 		this.toFloat(vec);
-		
+
 		NormalizeVector(vec, vec);
 		Vector_MakeFromFloat(this, vec);
 	}
-	
+
 	//Negatives this vector
 	void negate()
 	{
@@ -89,45 +89,45 @@ enum struct Rotator
 	float pitch;
 	float yaw;
 	float roll;
-	
+
 	//Converts this Rotator into a float array
 	float[] ToFloat()
 	{
 		float result[3];
-		
+
 		result[0] = this.pitch;
 		result[1] = this.yaw;
 		result[2] = this.roll;
-		
+
 		return result;
 	}
-	
+
 	//Retrieves the forward vector of this rotator as a Vector3
 	void GetForwardVector(Vector3 vector)
 	{
 		float vec[3], vecF[3];
 		this.toFloat(vec);
-		
+
 		GetAngleVectors(vec, vecF, NULL_VECTOR, NULL_VECTOR);
 		Vector_MakeFromFloat(vector, vecF);
 	}
-	
+
 	//Retrieves the right vector of this rotator as a Vector3
 	void GetRightVector(Vector3 vector)
 	{
 		float vec[3], vecF[3];
 		this.toFloat(vec);
-		
+
 		GetAngleVectors(vec, NULL_VECTOR, vecF, NULL_VECTOR);
 		Vector_MakeFromFloat(vector, vecF);
 	}
-	
+
 	//Retrieves the right vector of this rotator as a Vector3
 	void GetUpVector(Vector3 vector)
 	{
 		float vec[3], vecF[3];
 		this.toFloat(vec);
-		
+
 		GetAngleVectors(vec, NULL_VECTOR, NULL_VECTOR, vecF);
 		Vector_MakeFromFloat(vector, vecF);
 	}
@@ -159,7 +159,7 @@ stock void Vector_GetProperty(int entity, PropType type, const char[] property, 
 {
 	float result[3];
 	GetEntPropVector(entity, type, property, result, element);
-	
+
 	Vector_MakeFromFloat(vector, result);
 }
 
@@ -170,7 +170,7 @@ stock void Vector_GetProperty(int entity, PropType type, const char[] property, 
 stock float Vector_DotProduct(const Vector3 vector1, const Vector3 vector2)
 {
 	float vec1[3], vec[2];
-	
+
 	return GetVectorDotProduct(vec1, vec2);
 }
 
@@ -183,7 +183,7 @@ stock float Vector_GetDistance(Vector3 vector1, Vector2 vector2, bool squared = 
 	float vec1[3], vec2[3];
 	vector1.toFloat(vec1);
 	vector2.toFloat(vec2);
-	
+
 	return GetVectorDistance(vec1, vec2, squared);
 }
 
@@ -194,9 +194,9 @@ stock float Vector_GetDistance(Vector3 vector1, Vector2 vector2, bool squared = 
 stock void Vector_CrossProduct(const Vector3 vector1, const Vector3 vector2, Vector3 buffer)
 {
 	float vec1[3], vec[2], result[3];
-	
+
 	GetVectorCrossProduct(vec1, vec2, result);
-	
+
 	Vector_MakeFromFloat(buffer, result);
 }
 
@@ -204,7 +204,7 @@ stock void Vector_CrossProduct(const Vector3 vector1, const Vector3 vector2, Vec
 /// Converts a float array into a Vector3 object
 ///
 
-stock void Vector_MakeFromFloat(Vector vector, float vec[3])
+stock void Vector_MakeFromFloat(Vector3 vector, float vec[3])
 {
 	vector.x = vec[0];
 	vector.y = vec[1];
@@ -215,7 +215,7 @@ stock void Vector_MakeFromFloat(Vector vector, float vec[3])
 /// Adds two Vector3 objects. Either inputs may be used as the buffer
 ///
 
-stock void Vector_Add(Vector vector1, Vector vector2, Vector buffer)
+stock void Vector_Add(Vector3 vector1, Vector3 vector2, Vector3 buffer)
 {
 	buffer.x = vector1.x + vector2.x;
 	buffer.y = vector1.y + vector2.y;
@@ -252,9 +252,9 @@ stock void Vector_GetAngles(Vector3 vector, Rotator rot)
 {
 	float vec[3], angles[3];
 	vector.toFloat(vec);
-	
+
 	GetVectorAngles(vec, angles);
-	
+
 	Rotator_MakeFromFloat(rot, angles);
 }
 
@@ -266,7 +266,7 @@ stock void Vector_GetClientPosition(int client, Vector3 vector)
 {
 	float pos[3];
 	GetClientAbsOrigin(client, pos);
-		
+
 	Vector_MakeFromFloat(vector, pos);
 }
 
@@ -278,7 +278,7 @@ stock void Vector_GetClientEyePosition(int client, Vector3 vector)
 {
 	float pos[3];
 	GetClientEyePosition(client, pos);
-		
+
 	Vector_MakeFromFloat(vector, pos);
 }
 
@@ -305,7 +305,7 @@ stock void Rotator_GetProperty(int entity, PropType type, const char[] property,
 {
 	float result[3];
 	GetEntPropVector(entity, type, property, result, element);
-	
+
 	Rotator_MakeFromFloat(rot, result);
 }
 
@@ -328,7 +328,7 @@ stock void Rotator_GetClientEyeAngles(int client, Rotator rot)
 {
 	float angle[3];
 	GetClientEyeAngles(client, angle);
-		
+
 	Rotator_MakeFromFloat(rot, angle);
 }
 
@@ -340,7 +340,6 @@ stock void Rotator_GetClientAbsAngles(int client, Rotator rot)
 {
 	float angle[3];
 	GetClientAbsAngles(client, angle);
-		
+
 	Rotator_MakeFromFloat(rot, angle);
 }
-

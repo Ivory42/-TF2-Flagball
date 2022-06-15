@@ -24,6 +24,19 @@ ConVar TravelInterval;
 ConVar RingHeight;
 //Handle g_DetonateTime;
 
+static const char GameSounds[][] =
+{
+	"vo/announcer_sd_round_start03.mp3",
+	"vo/announcer_ends_30sec.mp3",
+	"vo/announcer_ends_20sec.mp3",
+	"vo/announcer_ends_10sec.mp3",
+
+	"ambient/alarms/doomsday_lift_alarm.wav",
+
+	"misc/hologram_start.wav",
+	"misc/rd_finale_beep01.wav"
+};
+
 #define StartSound	"vo/announcer_sd_round_start03.mp3"
 #define SoundAlarm	"ambient/alarms/doomsday_lift_alarm.wav"
 #define SoundFlagActivate "misc/hologram_start.wav"
