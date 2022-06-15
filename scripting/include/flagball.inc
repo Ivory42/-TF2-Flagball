@@ -84,6 +84,17 @@ enum struct FlagWrapper
 			AcceptEntityInput(this.entity.get(), "SetTeam");
 		}
 	}
+	
+	void respawn(Vector3 pos, bool reset)
+	{
+		if (this.entity.valid())
+		{
+			this.entity.teleport(pos, NULL_VECTOR3, NULL_VECTOR3);
+			
+			if (reset)
+				this.entity.input("Disable");
+		}
+	}
 }
 
 enum struct GameWrapper
@@ -130,3 +141,17 @@ enum struct PlayerWrapper
 	float check_time;
 }
 PlayerWrapper PlayerInfo[MAXPLAYERS+1];
+
+///
+/// Wrapper stocks
+///
+
+stock PlayerWrapper[] GetPlayer(Client client)
+{
+	return PlayerInfo[client.get()];
+}
+
+stock void SetPlayer(Client client, PlayerWrapper player)
+{
+	PlayerInfo[client.get()] = player;
+}
