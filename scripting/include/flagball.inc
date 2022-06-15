@@ -1,7 +1,5 @@
 #include <sdkhooks>
 #include <sdktools>
-#include <tf2_stocks>
-#include <tf2>
 #include <dhooks>
 #include <morecolors>
 #include <ilib>
@@ -55,7 +53,7 @@ enum struct FlagWrapper
 	int team;
 	bool away;
 	bool active;
-	
+
 	void reset()
 	{
 		if (this.entity.valid())
@@ -64,7 +62,7 @@ enum struct FlagWrapper
 			this.setNeutral();
 		}
 	}
-	
+
 	void SetNeutral()
 	{
 		if (this.entity.valid())
@@ -86,7 +84,7 @@ enum struct GameWrapper
 	int max_score;
 	int ring_height;
 	int team_unabalanced;
-	
+
 	int team_score[MAXTEAMS];
 	bool has_flag[MAXTEAMS];
 
@@ -104,14 +102,14 @@ enum struct GameWrapper
 GameWrapper game;
 
 enum struct PlayerWrapper
-{	
+{
 	int hold_time;
 	Pointer glow;
 	int score;
-	
+
 	bool can_respawn;
 	bool respawning;
-	
+
 	float respawn_delay;
 	float respawn_time;
 	float respawn_tick;
