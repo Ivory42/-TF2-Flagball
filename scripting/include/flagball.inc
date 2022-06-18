@@ -146,9 +146,9 @@ PlayerWrapper PlayerInfo[MAXPLAYERS+1];
 /// Wrapper stocks
 ///
 
-stock PlayerWrapper[] GetPlayer(Client client)
+stock void GetPlayer(Client client, PlayerWrapper player)
 {
-	return PlayerInfo[client.get()];
+	player = PlayerInfo[client.get()];
 }
 
 stock void SetPlayer(Client client, PlayerWrapper player)

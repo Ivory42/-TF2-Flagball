@@ -1,5 +1,10 @@
 #include <sdktools>
 
+#if defined _ilib_vector_included
+ #endinput
+#endif
+#define _ilib_vector_included
+
 ///
 /// Wrapper for traditional sourcepawn vectors (float arrays)
 ///

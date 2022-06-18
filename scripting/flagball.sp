@@ -201,7 +201,8 @@ public Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcas
 	Client victim;
 	victim.userid = event.GetInt("userid");
 
-	PlayerWrapper player = GetPlayer(client);
+	PlayerWrapper player;
+	GetPlayer(client, player);
 	
 	int team = client.GetTeam();
 	if (!game.has_flag[team] && player.can_respawn)
@@ -227,7 +228,8 @@ public Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcas
 	Client client;
 	client.userid = event.GetInt("userid");
 	
-	PlayerWrapper player = GetPlayer(client);
+	PlayerWrapper player;
+	GetPlayer(client, player);
 
 	if (client.valid())
 	{
@@ -246,15 +248,22 @@ public Action Ball_JoinTeam(Event event, const char[] name, bool dontBroadcast)
 	Client client;
 	client.userid = event.GetInt("userid");
 	
+	PlayerWrapper player;
+	GetPlayer(client, player);
+	
 	int team = event.GetInt("team");
 	
 	if (game.state == State_InProgress && team < 2)
 		CheckTeamBalance();
 		
 	if (!game.has_flag[team])
-		SetPlayerRespawnTime(GetPlayer(client), RespawnTime.FloatValue);
+		SetPlayerRespawnTime(player, RespawnTime.FloatValue);
 	else
-		DisablePlayerRespawn(GetPlayer(client));
+		DisablePlayerRespawn(player);
+		
+	SetPlayer(client, player);
+	
+	return Plugin_Continue;
 }
 
 void SetPlayerRespawnTime(PlayerWrapper player, float time)

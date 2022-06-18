@@ -2,6 +2,12 @@
 #include <tf2_stocks>
 #include <sdktools>
 #include "ilib/vector.inc"
+#include "ilib/traces.inc"
+
+#if defined _ilib_included
+ #endinput
+#endif
+#define _ilib_included
 
 ///
 /// Entity Wrapper for storing references
