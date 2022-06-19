@@ -2,7 +2,7 @@
 
 #include <flagball>
 
-#define PLUGIN_VERSION	"v0.1.4"
+#define PLUGIN_VERSION	"v0.1.6"
 
 public Plugin myinfo =
 {
@@ -30,8 +30,6 @@ public void OnPluginStart()
 	InitTravelDelay = CreateConVar("fb_carrier_travel_delay", "10.0", "Time in seconds between travel intervals");
 	TravelInterval = CreateConVar("fb_carrier_travel_interval", "10.0", "Time in seconds that the carrier has to travel beyond the distance threshold");
 	RingHeight = CreateConVar("fb_carrier_ring_height", "3", "How many layers for the ring should be added above and below the player");
-
-	//ServerCommand("mp_teams_unbalance_limit 2");
 
 	ImbalanceLimit = FindConVar("mp_teams_unbalance_limit");
 	game.max_score = MaxScore.IntValue;
@@ -86,7 +84,7 @@ public void OnMapStart()
 	game.roundhook.AddParam(HookParamType_Bool);
 	game.roundhook.AddParam(HookParamType_Bool);
 	game.roundhook.AddParam(HookParamType_Bool);
-	game.hookid = game.roundhook.HookGamerules(Hook_Pre, UnloadRoundEndCheck);//DHookGamerules(hWinning, false, UnloadRoundEndCheck);
+	game.hookid = game.roundhook.HookGamerules(Hook_Pre, UnloadRoundEndCheck);
 	delete config;
 
 	InvalidateTravelTimers();
@@ -478,7 +476,7 @@ Action Timer_MovePlayer(Handle timer)
 	return Plugin_Stop;
 }
 
-//Creates visual ring to display the area the flag carrier needs to leave in order to keep the flag
+//Creates a visual ring to display the area the flag carrier needs to leave in order to keep the flag
 void CreateRingForClient(Client client, float duration)
 {
 	if (!client.valid())
@@ -511,9 +509,6 @@ void CreateRingForClient(Client client, float duration)
 	//Create multiple ring "layers" to make it more visible
 	for (int i = 1; i <= totalRings; i++)
 	{
-
-		//TE_SetupBeamRingPoint(position.ToFloat(), size - 1.0, size, PrecacheModel("materials/sprites/laser.vmt"), PrecacheModel("materials/sprites/halo01.vmt"), 0, 0, duration, 150.0, 0.5, color, 50, 0);
-		//TE_SendToClient(client);
 		TempEnt ring = TempEnt();
 		ring.CreateRing(client, position, info);
 		position.z += 100.0;
@@ -557,8 +552,6 @@ void SendTravelMessage()
 	Format(msg, sizeof msg, "Alert! You must exit the ring within %i seconds to keep possession of the flag!", TravelInterval.IntValue);
 	game.carrier.PrintCenterText(msg);
 	game.carrier.EmitSound(GameSounds[Snd_Move]);
-	//PrintCenterText(game.carrier.get(), msg);
-	//EmitSoundToClient(game.carrier.get(), TravelSound);
 }
 
 void InvalidateTravelTimers()
@@ -582,7 +575,6 @@ int CreateNeutralFlag() //returns a reference to the flag created
 {
 	EntityWrapper ball;
 	ball.set(CreateEntityByName("item_teamflag"));
-	//AcceptEntityInput(ball, "VisibleWhenDisabled");
 	ball.HookOutput("OnDrop", Ball_FlagDropped, false);
 	ball.HookOutput("OnReturn", Ball_FlagReturned, false);
 	ball.activate();
@@ -628,7 +620,7 @@ public void OnGameFrame()
 		}
 	}
 
-	if (game.state == RoundState_RoundRunning && game.team_unbalanced >= 2) //new autobalance setup because while loops suck
+	if (game.state == RoundState_RoundRunning && game.team_unbalanced >= 2)
 	{
 		if (game.check_balance_delay <= GetGameTime())
 		{
@@ -652,7 +644,6 @@ void CheckCarrierShouldMove()
 		game.carrier.GetPosition(position);
 		if (position.DistanceTo(game.carrier_lastpos) > game.carrier_traveldist)
 		{
-			//PrintCenterText(FlagCarrier, "");
 			game.carrier_move = false;
 			InvalidateTravelTimers();
 			TravelTimer = CreateTimer(InitTravelDelay.FloatValue, Timer_MovePlayer);
