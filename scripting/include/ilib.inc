@@ -46,6 +46,29 @@ enum struct EntityWrapper
 		}
 	}
 
+	//Dispatch Spawn
+	void dispatch()
+	{
+		DispatchSpawn(this.get());
+	}
+
+	//Activates this entity
+	void activate()
+	{
+		ActivateEntity(this.get());
+	}
+
+	void HookOutput(const char[] output, EntityOutput callback, bool once)
+	{
+		if (this.valid())
+			HookSingleEntityOutput(this.get(), output, callback, once);
+	}
+
+	void UnhookOutput(const char[] output, EntityOutput callback)
+	{
+		if (this.valid())
+			UnhookSingleEntityOutput(this.get(), output, callback);
+	}
 
 	//Teleports this entity
 	void teleport(Vector3 pos, Rotator rot, Vector3 vel)
@@ -154,7 +177,8 @@ enum struct Client
 
 	void set(int client)
 	{
-		this.userid = GetClientUserId(client);
+		if (client > 0 && client <= MaxClients && IsClientInGame(client))
+			this.userid = GetClientUserId(client);
 	}
 
 	int get()
@@ -215,10 +239,30 @@ enum struct Client
 	}
 
 	//Sets a condition on this client
-	void AddCondition(TFCond cond, float duration)
+	void AddCondition(TFCond cond, float duration, int inflictor = 0)
 	{
 		if (this.valid())
-			TF2_AddCondition(this.get(), cond, duration);
+			TF2_AddCondition(this.get(), cond, duration, inflictor);
+	}
+
+	//removes a condition from this client
+	void RemoveCondition(TFCond cond)
+	{
+		if (this.valid())
+			TF2_RemoveCondition(this.get(), cond);
+	}
+
+	//Plays a sound to this client
+	void EmitSound(const char[] sound, int entity = 0, int channel = SNDCHAN_AUTO, int level = 150, int flags = 0, float vol = 1.0, int pitch = 100)
+	{
+		if (this.valid())
+			EmitSoundToClient(this.get(), sound, entity, channel, level, flags, vol, pitch);
+	}
+
+	void PrintCenterText(const char[] message)
+	{
+		if (this.valid())
+			PrintCenterText(this.get(), message);
 	}
 
 	//Retrieves an integer property from this client
@@ -325,6 +369,67 @@ enum struct Transform
 	{
 		pos = this.vector.ToFloat();
 		rot = this.rotation.ToFloat();
+	}
+}
+
+///
+/// Tempent wrapper
+///
+
+
+// Generic struct for storing information pertaining to tempents. This is global and can be used for every tempent type
+// This helps keep the number of function arguments down
+enum struct TempEntInfo
+{
+	float start_radius;
+	float end_radius;
+
+	int model;
+	int halo;
+
+	int start_frame;
+	int frame_rate;
+
+	float lifetime;
+	float width;
+	float amplitude;
+
+	int color[4];
+
+	int speed;
+
+	int flags;
+}
+
+int tempent_index;
+
+methodmap TempEnt
+{
+	public TempEnt()
+	{
+		tempent_index++;
+		return view_as<TempEnt>(tempent_index);
+	}
+
+	public void CreateRing(Client client, Vector3 origin, TempEntInfo info)
+	{
+		float pos[3];
+		pos = origin.ToFloat();
+
+		TE_SetupBeamRingPoint(pos, info.start_radius, info.end_radius, info.model, info.halo, info.start_frame, info.frame_rate, info.lifetime, info.width, info.amplitude, info.color, info.speed, info.flags);
+
+		if (client.valid())
+			TE_SendToClient(client.get());
+	}
+
+	public void CreateRingAll(Vector3 origin, TempEntInfo info)
+	{
+		float pos[3];
+		pos = origin.ToFloat();
+
+		TE_SetupBeamRingPoint(pos, info.start_radius, info.end_radius, info.model, info.halo, info.start_frame, info.frame_rate, info.lifetime, info.width, info.amplitude, info.color, info.speed, info.flags);
+
+		TE_SendToAll();
 	}
 }
 

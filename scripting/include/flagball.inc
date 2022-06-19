@@ -24,7 +24,18 @@ ConVar TravelInterval;
 ConVar RingHeight;
 //Handle g_DetonateTime;
 
-static const char GameSounds[][] =
+enum
+{
+	Snd_Start,
+	Snd_30,
+	Snd_20,
+	Snd_10,
+	Snd_CloseToWin,
+	Snd_FlagActive,
+	Snd_Move
+}
+
+char GameSounds[][] =
 {
 	"vo/announcer_sd_round_start03.mp3",
 	"vo/announcer_ends_30sec.mp3",
@@ -37,13 +48,6 @@ static const char GameSounds[][] =
 	"misc/rd_finale_beep01.wav"
 };
 
-#define StartSound	"vo/announcer_sd_round_start03.mp3"
-#define SoundAlarm	"ambient/alarms/doomsday_lift_alarm.wav"
-#define SoundFlagActivate "misc/hologram_start.wav"
-#define Sound30sec	"vo/announcer_ends_30sec.mp3"
-#define Sound20sec	"vo/announcer_ends_20sec.mp3"
-#define Sound10sec 	"vo/announcer_ends_10sec.mp3"
-#define TravelSound "misc/rd_finale_beep01.wav"
 #define FAR_FUTURE 9999999.0
 
 Handle TravelTimer = INVALID_HANDLE; //Time between carrier travel intervals
@@ -52,27 +56,24 @@ Handle TravelTimer = INVALID_HANDLE; //Time between carrier travel intervals
 Handle ScoreHud;
 Handle RespawnHud;
 
-enum RoundState
-{
-	State_Preround,
-	State_InProgress,
-	State_EndRound,
-	State_Postround
-}
-
 enum struct FlagWrapper
 {
-	Pointer entity;
+	EntityWrapper entity;
 	int team;
 	bool away;
 	bool active;
+
+	void set(int reference)
+	{
+		this.entity.ref = reference;
+	}
 
 	void reset()
 	{
 		if (this.entity.valid())
 		{
 			AcceptEntityInput(this.entity.get(), "ForceReset");
-			this.setNeutral();
+			this.SetNeutral();
 		}
 	}
 
@@ -84,13 +85,13 @@ enum struct FlagWrapper
 			AcceptEntityInput(this.entity.get(), "SetTeam");
 		}
 	}
-	
+
 	void respawn(Vector3 pos, bool reset)
 	{
 		if (this.entity.valid())
 		{
-			this.entity.teleport(pos, NULL_VECTOR3, NULL_VECTOR3);
-			
+			this.entity.teleport(pos, NULL_ROTATOR, NULL_VECTOR3);
+
 			if (reset)
 				this.entity.input("Disable");
 		}
@@ -107,7 +108,7 @@ enum struct GameWrapper
 
 	int max_score;
 	int ring_height;
-	int team_unabalanced;
+	int team_unbalanced;
 
 	int team_score[MAXTEAMS];
 	bool has_flag[MAXTEAMS];
@@ -122,13 +123,18 @@ enum struct GameWrapper
 	float carrier_traveltick;		//How frequent the travel distance is checked
 	float carrier_checktime;
 	Vector3 carrier_lastpos;
+
+	//Prevent round from ending
+	DynamicHook roundhook;
+	int hookid;
+	int hook_offset;
 }
 GameWrapper game;
 
 enum struct PlayerWrapper
 {
 	int hold_time;
-	Pointer glow;
+	EntityWrapper glow;
 	int score;
 
 	bool can_respawn;

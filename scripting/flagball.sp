@@ -4,10 +4,6 @@
 
 #define PLUGIN_VERSION	"v0.1.4"
 
-Handle hWinning = INVALID_HANDLE;
-int g_SetWinningTeamOffset = -1;
-int g_SetWinningTeamHook = -1;
-
 public Plugin myinfo =
 {
     name    = "[TF2] Oddball",
@@ -39,7 +35,7 @@ public void OnPluginStart()
 
 	ImbalanceLimit = FindConVar("mp_teams_unbalance_limit");
 	game.max_score = MaxScore.IntValue;
-	
+
 	HookEvent("teamplay_round_start", Ball_RoundInit);
 	HookEvent("arena_round_start", Ball_RoundBegin);
 	HookEvent("teamplay_flag_event", Ball_FlagEvent);
@@ -47,10 +43,10 @@ public void OnPluginStart()
 	HookEvent("player_death", Ball_PlayerDeath);
 	HookEvent("player_spawn", Ball_SpawnPlayer);
 	HookEvent("player_team", Ball_JoinTeam);
-	
+
 	ScoreHud = CreateHudSynchronizer();
 	RespawnHud = CreateHudSynchronizer();
-	
+
 	RegAdminCmd("sm_getpos", CMDGetPos, ADMFLAG_KICK);
 	ResetScores();
 
@@ -68,30 +64,31 @@ public void OnPluginStart()
 public void OnMapStart()
 {
 	PrecacheSounds();
-	
-	FindConVar("tf_arena_use_queue").Set(0, false, false);
-	ImbalanceLimit.Set(0, false, false); //temp
-	
+
+	FindConVar("tf_arena_use_queue").SetBool(false, false, false);
+	ImbalanceLimit.SetInt(0, false, false); //temp
+
 	int resourceEnt = GetPlayerResourceEntity();
 	if (IsValidEntity(resourceEnt))
 	{
 		SDKHook(resourceEnt, SDKHook_ThinkPost, UpdatePlayerScore);
 	}
-	
-	Handle config = LoadGameConfigFile("tf2-roundend.games");
-	if (config != INVALID_HANDLE)
-	{
-		g_SetWinningTeamOffset = GameConfGetOffset(config, "SetWinningTeam");
-		hWinning = DHookCreate(g_SetWinningTeamOffset, HookType_GameRules, ReturnType_Void, ThisPointer_Ignore, Ball_SetWinningTeam);
-		DHookAddParam(hWinning, HookParamType_Int);
-		DHookAddParam(hWinning, HookParamType_Int);
-		DHookAddParam(hWinning, HookParamType_Bool);
-		DHookAddParam(hWinning, HookParamType_Bool);
-		DHookAddParam(hWinning, HookParamType_Bool);
-		DHookAddParam(hWinning, HookParamType_Bool);
-		g_SetWinningTeamHook = DHookGamerules(hWinning, false, Ball_UnloadSetWinningTeam);
-		CloseHandle(config);
-	}
+
+	GameData config = new GameData("tf2-roundend.games");
+	if (!config)
+		SetFailState("Failed to find tf2-roundend.games gamedata! Cannot proceed!");
+
+	game.hook_offset = config.GetOffset("SetWinningTeam");
+	game.roundhook = DHookCreate(game.hook_offset, HookType_GameRules, ReturnType_Void, ThisPointer_Ignore, CheckRoundEnd);
+	game.roundhook.AddParam(HookParamType_Int);
+	game.roundhook.AddParam(HookParamType_Int);
+	game.roundhook.AddParam(HookParamType_Bool);
+	game.roundhook.AddParam(HookParamType_Bool);
+	game.roundhook.AddParam(HookParamType_Bool);
+	game.roundhook.AddParam(HookParamType_Bool);
+	game.hookid = game.roundhook.HookGamerules(Hook_Pre, UnloadRoundEndCheck);//DHookGamerules(hWinning, false, UnloadRoundEndCheck);
+	delete config;
+
 	InvalidateTravelTimers();
 }
 
@@ -104,7 +101,7 @@ public void OnAllPluginsLoaded()
 		char gameDesc[64];
 		Format(gameDesc, sizeof gameDesc, "TF2 Oddball (%s)", PLUGIN_VERSION);
 		Steam_SetGameDescription(gameDesc);
-		
+
 		LogMessage("Arena map detected, loading TF2 Oddball");
 	}
 	else
@@ -125,13 +122,9 @@ public Action PreventFlagDrop(int client, const char[] command, int argc)
 
 public void PrecacheSounds()
 {
-	PrecacheSound(StartSound, true);
-	PrecacheSound(Sound10sec, true);
-	PrecacheSound(Sound20sec, true);
-	PrecacheSound(Sound30sec, true);
-	PrecacheSound(SoundAlarm, true);
-	PrecacheSound(SoundFlagActivate, true);
-	PrecacheSound(TravelSound, true);
+	for (int i = 0; i != sizeof GameSounds; i++)
+		PrecacheSound(GameSounds[i]);
+
 	PrecacheSound("vo/announcer_ends_1sec.mp3");
 	PrecacheSound("vo/announcer_ends_2sec.mp3");
 	PrecacheSound("vo/announcer_ends_3sec.mp3");
@@ -157,7 +150,7 @@ void ResetPlayerVars(PlayerWrapper player)
 
 public void OnClientDisconnect(int client)
 {
-	if (game.state = State_InProgress)
+	if (game.state == RoundState_RoundRunning)
 		CheckTeamBalance();
 }
 
@@ -173,23 +166,28 @@ public Action CMDGetPos(int client, int args)
 ROUND END CONDITIONS
 *************************************************/
 
-public MRESReturn Ball_SetWinningTeam(Handle hParams)
+MRESReturn CheckRoundEnd(DHookParam params)
 {
-	if (game.state != State_EndRound)
-	{
+	if (game.state != RoundState_TeamWin)
 		return MRES_Supercede;
-	}
+
 	return MRES_Ignored;
 }
 
-public Ball_UnloadSetWinningTeam(int hookid)
+MRESReturn UnloadRoundEndCheck(int hookid)
 {
+	if (game.state != RoundState_TeamWin)
+		return MRES_Supercede;
+
+	return MRES_Ignored;
 }
 
 public Action Ball_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
-	game.state = State_Postround;
+	game.state = RoundState_BetweenRounds;
 	InvalidateTravelTimers();
+
+	return Plugin_Continue;
 }
 
 /*************************************************
@@ -202,24 +200,23 @@ public Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcas
 	victim.userid = event.GetInt("userid");
 
 	PlayerWrapper player;
-	GetPlayer(client, player);
-	
-	int team = client.GetTeam();
+	GetPlayer(victim, player);
+
+	int team = victim.GetTeam();
 	if (!game.has_flag[team] && player.can_respawn)
 	{
 		player.respawn_delay = GetGameTime() + 4.0;
-		player.respawn_time = RespawnTime.IntValue;
+		player.respawn_time = RespawnTime.FloatValue;
 	}
-	
-	//Update our struct to reflect the changes made
-	SetPlayer(client, player);
-	
-	else if (client.GetClass() == TFClass_Engineer)
+	else if (victim.GetClass() == TFClass_Engineer)
 	{
 		if (DestroySentries.BoolValue)
-			RemoveSentries(client);
+			RemoveSentries(victim);
 	}
-		
+
+	//Update our struct to reflect the changes made
+	SetPlayer(victim, player);
+
 	return Plugin_Continue;
 }
 
@@ -227,7 +224,7 @@ public Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcas
 {
 	Client client;
 	client.userid = event.GetInt("userid");
-	
+
 	PlayerWrapper player;
 	GetPlayer(client, player);
 
@@ -236,33 +233,35 @@ public Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcas
 		//int player = client.get();
 		player.respawning = false;
 		player.hud_refresh_tick = 0.0;
-		if (game.state = State_InProgress)
+		if (game.state == RoundState_RoundRunning)
 			client.AddCondition(TFCond_Ubercharged, 3.0);
-			
+
 		SetPlayer(client, player);
 	}
+
+	return Plugin_Continue;
 }
 
 public Action Ball_JoinTeam(Event event, const char[] name, bool dontBroadcast)
 {
 	Client client;
 	client.userid = event.GetInt("userid");
-	
+
 	PlayerWrapper player;
 	GetPlayer(client, player);
-	
+
 	int team = event.GetInt("team");
-	
-	if (game.state == State_InProgress && team < 2)
+
+	if (game.state == RoundState_RoundRunning && team < 2)
 		CheckTeamBalance();
-		
+
 	if (!game.has_flag[team])
 		SetPlayerRespawnTime(player, RespawnTime.FloatValue);
 	else
 		DisablePlayerRespawn(player);
-		
+
 	SetPlayer(client, player);
-	
+
 	return Plugin_Continue;
 }
 
@@ -295,7 +294,7 @@ public void RemoveSentries(Client client) //Finds and destroys all sentry guns o
 {
 	if (!client.valid())
 		return;
-		
+
 	int sentry = MaxClients + 1;
 	while((sentry = FindEntityByClassname(sentry, "obj_sentrygun")) != -1)
 	{
@@ -307,14 +306,19 @@ public void RemoveSentries(Client client) //Finds and destroys all sentry guns o
 	}
 }
 
-public void CheckPlayerHoldTime(PlayerWrapper player)
+public void CheckCarrierHoldTime()
 {
+	PlayerWrapper player;
+	GetPlayer(game.carrier, player);
+
 	player.hold_time++;
 	if (player.hold_time >= HoldTimePoints.IntValue)
 	{
 		player.hold_time = 0;
 		player.score++;
 	}
+
+	SetPlayer(game.carrier, player);
 }
 
 /*************************************************
@@ -323,7 +327,7 @@ ROUND SETTINGS
 
 public void EndRound(int team)
 {
-	game.state = State_EndRound;
+	game.state = RoundState_TeamWin;
 	switch (team)
 	{
 		case 2: ServerCommand("mp_forcewin 2");
@@ -333,47 +337,37 @@ public void EndRound(int team)
 
 public Action Ball_RoundInit(Event event, const char[] name, bool dontBroadcast)
 {
-	game.state = State_Preround;
+	game.state = RoundState_Preround;
 	RemoveEntities();
 	ResetScores();
 
 	//CheckTeamBalance(true);
 	game.flag.active = false;
+
+	return Plugin_Continue;
 }
 
 public Action Ball_RoundBegin(Event event, const char[] name, bool dontBroadcast)
 {
-	SetupScoreHud();
-	game.state = State_InProgress;
-	SetTimerValue(600); //Sets a round timer to 600 seconds
+	//SetupScoreHud();
+	game.state = RoundState_RoundRunning;
 
 	Vector3 spawnpos;
-	game.flag.entity.set(CreateNeutralFlag());
+	game.flag.set(CreateNeutralFlag()); //Returns an entity reference
 	GetBallSpawn(spawnpos);
-	RespawnFlag(spawnpos, true);
-	
+	game.flag.respawn(spawnpos, true);
+
 	CreateTimer(2.0, TimerSoundStart);
 	CreateTimer(FlagEnableTime.FloatValue, EnableFlag);
-	
+
 	game.carrier_traveldist = TravelDist.FloatValue;
-	game.ring_height = RingHeight.FloatValue;
+	game.ring_height = RingHeight.IntValue;
 	game.balance_delay = 0.0;
-	
+
 	MC_PrintToChatAll("{green}[FB] {default}The flag will be enabled in %.0fs!", FlagEnableTime.FloatValue);
 	CheckTeamBalance();
-	
-	return Plugin_Continue;
-}
 
-void RespawnFlag(Vector3 spawn, bool reset)
-{
-	if (!game.flag.entity.valid())
-		return;
-	
-	game.flag.entity.teleport(spawn, NULL_ROTATOR, NULL_VECTOR3);
-	
-	if (reset)
-		game.flag.entity.input("Disable");
+	return Plugin_Continue;
 }
 
 public void ResetScores()
@@ -382,7 +376,7 @@ public void ResetScores()
 	{
 		game.team_score[team] = 0;
 		ToggleRespawns(team, true);
-		game.has_flag = false;
+		game.has_flag[team] = false;
 	}
 	game.max_score = MaxScore.IntValue;
 	game.carrier.userid = -1;
@@ -396,7 +390,7 @@ HUD AND TIMER FUNCTIONS
 
 void UpdatePlayerScore(int entity)
 {
-	for(int i = 1; i <= MaxClients; i++)
+	for (int i = 1; i <= MaxClients; i++)
 	{
 		if(!IsValidClient(i) || PlayerInfo[i].score < 0)
 			continue;
@@ -407,52 +401,16 @@ void UpdatePlayerScore(int entity)
 	}
 }
 
-Action AnnounceMessage(Handle timer)
+Action TimerSoundStart(Handle timer)
 {
-	
-}
-
-public Action TimerSoundStart(Handle timer)
-{
-	PlaySoundToAllClients(StartSound);
+	PlaySoundToAllClients(GameSounds[Snd_Start]);
 	return Plugin_Stop;
-}
-
-public void SetTimerValue(int time)
-{
-	int timer;
-	timer = FindEntityByClassname(timer, "team_round_timer");
-	if (timer < 1) //timer not found, lets create one
-	{
-		timer = CreateEntityByName("team_round_timer");
-		DispatchSpawn(timer)
-	}
-	SetVariantInt(time);
-	AcceptEntityInput(timer, "SetTime");
-	AcceptEntityInput(timer, "SetMaxTime");
-	AcceptEntityInput(timer, "Resume");
-	HookEntityOutput("team_round_timer", "OnFinished", TimerExpire); //Hook for when the timer ends
-}
-
-public void TimerExpire(const char[] output, int caller, int victim, float delay)
-{
-	game.end_round = true;
-	if (game.team_score[2] > game.team_score[3])
-	{
-		ServerCommand("mp_forcewin 2");
-		EndRound(2);
-	}
-	else if (game.team_score[3] > game.team_score[2])
-	{
-		ServerCommand("mp_forcewin 3");
-		EndRound(3);
-	}
 }
 
 public Action EnableFlag(Handle timer)
 {
 	game.flag.entity.input("Enable");
-	PlaySoundToAllClients(SoundFlagActivate);
+	PlaySoundToAllClients(GameSounds[Snd_FlagActive]);
 	PrintCenterTextAll("Flag Enabled!");
 
 	SetVariantInt(15);
@@ -469,17 +427,22 @@ FLAG EVENTS AND FUNCTIONS
 public Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
 {
 	int type = event.GetInt("eventtype"); //type corresponding to event
-	int client = event.GetInt("player"); //Player involved with type
-	if (!IsValidClient(client))
+	Client client;
+	client.set(event.GetInt("player")); //Player involved with type
+
+	if (!client.valid())
 		return Plugin_Continue;
+
+	PlayerWrapper player;
+	GetPlayer(client, player);
 
 	switch (type)
 	{
 		case 1: //Flag Taken
 		{
-			int team = GetClientTeam(client);
-			game.carrier.set(client);
-			OutlineClient(client);
+			int team = client.GetTeam();
+			game.carrier.userid = client.userid;
+			OutlineClient(client, player);
 			game.flag.team = team;
 			game.flag.away = true;
 			game.carrier_checktime = GetGameTime() + 1.0;
@@ -489,35 +452,41 @@ public Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
 			SetVariantInt(skin);
 			game.flag.entity.input("SetTeam");
 			if (MarkCarrier.BoolValue)
-				TF2_AddCondition(client, TFCond_MarkedForDeath, TFCondDuration_Infinite);
-				
-			TravelTimer = CreateTimer(InitTravelDelay.FloatValue, Timer_MovePlayer, game.carrier.get());
+				client.AddCondition(TFCond_MarkedForDeath, TFCondDuration_Infinite);
+
+			TravelTimer = CreateTimer(InitTravelDelay.FloatValue, Timer_MovePlayer);
+
+			SetPlayer(client, player);
 			return Plugin_Continue;
 		}
 	}
 	return Plugin_Continue;
 }
 
-public Action Timer_MovePlayer(Handle timer, int carrier)
+public Action Timer_MovePlayer(Handle timer)
 {
-	if (game.carrier.get() == carrier && IsValidClient(carrier))
+	if (game.carrier.valid())
 	{
 		SendTravelMessage();
 		game.carrier_move = true;
-		game.carrier.position(game.carrier_lastpos, true);
+		game.carrier.GetPosition(game.carrier_lastpos);
 		game.carrier_traveltick = GetGameTime() + 0.2;
-		game.carrier_travelinterval = GetEngineTime() + TravelInterval.FloatValue;
-		CreateRingForClient(carrier, GetClientTeam(carrier), 0.21);
+		game.carrier_travelinterval = GetGameTime() + TravelInterval.FloatValue;
+		CreateRingForClient(game.carrier, 0.21);
 	}
 	TravelTimer = INVALID_HANDLE;
 	return Plugin_Stop;
 }
 
 //Creates visual ring to display the area the flag carrier needs to leave in order to keep the flag
-void CreateRingForClient(int client, int team, float duration)
+void CreateRingForClient(Client client, float duration)
 {
+	if (!client.valid())
+		return;
+
+	int team = client.GetTeam();
 	int color[4], totalRings;
-	float size = CarrierTravelDist * 2.0;
+	float size = game.carrier_traveldist * 2.0;
 	Vector3 position;
 	position = game.carrier_lastpos;
 	switch (team)
@@ -530,35 +499,49 @@ void CreateRingForClient(int client, int team, float duration)
 	position.z -= game.ring_height * 100.0;
 	totalRings = (game.ring_height * 2) + 1;
 
+	TempEntInfo info;
+	info.start_radius = size - 1.0;
+	info.end_radius = size;
+	info.model = PrecacheModel("materials/sprites/laser.vmt");
+	info.halo = info.model;
+	info.lifetime = duration;
+	info.width = 150.0;
+	info.color = color;
+
 	//Create multiple ring "layers" to make it more visible
 	for (int i = 1; i <= totalRings; i++)
 	{
-		TE_SetupBeamRingPoint(position.ToFloat(), size-1.0, size, PrecacheModel("materials/sprites/laser.vmt"), PrecacheModel("materials/sprites/halo01.vmt"), 0, 0, duration, 150.0, 0.5, color, 50, 0);
-		TE_SendToClient(client);
+
+		//TE_SetupBeamRingPoint(position.ToFloat(), size - 1.0, size, PrecacheModel("materials/sprites/laser.vmt"), PrecacheModel("materials/sprites/halo01.vmt"), 0, 0, duration, 150.0, 0.5, color, 50, 0);
+		//TE_SendToClient(client);
+		TempEnt ring = TempEnt();
+		ring.CreateRing(client, position, info);
 		position.z += 100.0;
 	}
 }
 
 public void Ball_FlagDropped(const char[] output, int caller, int victim, float delay)
 {
-	if (game.state == State_InProgress)
+	if (game.state == RoundState_RoundRunning)
 	{
+		int player = game.carrier.get();
+		PlayerInfo[player].glow.kill();
+
 		SetupRespawnsForFlagTeam(game.flag.team);
 		game.has_flag[game.flag.team] = false;
 		//SetFlagNeutral();
-		game.flag.setNeutral();
-		RemoveOutline(game.carrier.get());
+		game.flag.SetNeutral();
 
-		SetVariantInt(FlagDisableTime.FloatValue + 1);
-		AcceptEntityInput(game.flag.entity.get(), "SetReturnTime");
+		SetVariantInt(FlagDisableTime.IntValue + 1);
+		game.flag.entity.input("SetReturnTime");
 
 		if (FlagDisableTime.IntValue > 0)
 		{
-			AcceptEntityInput(game.flag.entity.get(), "Disable");
+			game.flag.entity.input("Disable");
 			CreateTimer(FlagDisableTime.FloatValue, EnableFlag);
 		}
 
-		TF2_RemoveCondition(game.carrier.get(), TFCond_MarkedForDeath);
+		game.carrier.RemoveCondition(TFCond_MarkedForDeath);
 		game.flag.active = false;
 		game.carrier.userid = -1;
 		game.flag.team = 0;
@@ -572,15 +555,17 @@ void SendTravelMessage()
 {
 	char msg[256];
 	Format(msg, sizeof msg, "Alert! You must exit the ring within %i seconds to keep possession of the flag!", TravelInterval.IntValue);
-	PrintCenterText(game.carrier.get(), msg);
-	EmitSoundToClient(game.carrier.get(), TravelSound);
+	game.carrier.PrintCenterText(msg);
+	game.carrier.EmitSound(GameSounds[Snd_Move]);
+	//PrintCenterText(game.carrier.get(), msg);
+	//EmitSoundToClient(game.carrier.get(), TravelSound);
 }
 
 void InvalidateTravelTimers()
 {
 	if (TravelTimer != INVALID_HANDLE)
 	{
-		KillTimer(g_TravelTimer);
+		KillTimer(TravelTimer);
 		TravelTimer = INVALID_HANDLE;
 	}
 	game.carrier_travelinterval = FAR_FUTURE;
@@ -590,25 +575,25 @@ public void Ball_FlagReturned(const char[] output, int caller, int victim, float
 {
 	Vector3 position;
 	GetBallSpawn(position);
-	RespawnFlag(position, false);
+	game.flag.respawn(position, false);
 }
 
-public int CreateNeutralFlag()
+public int CreateNeutralFlag() //returns a reference to the flag created
 {
-	int ball = CreateEntityByName("item_teamflag");
+	EntityWrapper ball;
+	ball.set(CreateEntityByName("item_teamflag"));
 	//AcceptEntityInput(ball, "VisibleWhenDisabled");
-	HookSingleEntityOutput(ball, "OnDrop", Ball_FlagDropped, false);
-	HookSingleEntityOutput(ball, "OnReturn", Ball_FlagReturned, false);
-	//HookSingleEntityOutput(iball, "OnPickup", Ball_FlagTaken, false);
-	ActivateEntity(ball);
-	DispatchSpawn(ball);
+	ball.HookOutput("OnDrop", Ball_FlagDropped, false);
+	ball.HookOutput("OnReturn", Ball_FlagReturned, false);
+	ball.activate();
+	ball.dispatch();
 	game.flag.active = false;
-	return ball;
+	return ball.ref;
 }
 
 public void OnGameFrame()
 {
-	if (game.flag.away && game.state = State_InProgress)
+	if (game.flag.away && game.state == RoundState_RoundRunning)
 	{
 		int team = game.flag.team;
 		if (team >= 2)
@@ -618,9 +603,9 @@ public void OnGameFrame()
 				int scoreRemain = (game.max_score - game.team_score[team]) - 1;
 				switch (scoreRemain)
 				{
-					case 30: PlaySoundToAllClients(Sound30sec);
-					case 20: PlaySoundToAllClients(Sound20sec);
-					case 10: PlaySoundToAllClients(Sound10sec);
+					case 30: PlaySoundToAllClients(GameSounds[Snd_30]);
+					case 20: PlaySoundToAllClients(GameSounds[Snd_20]);
+					case 10: PlaySoundToAllClients(GameSounds[Snd_10]);
 					case 5: PlaySoundToAllClients("vo/announcer_ends_5sec.mp3");
 					case 4: PlaySoundToAllClients("vo/announcer_ends_4sec.mp3");
 					case 3: PlaySoundToAllClients("vo/announcer_ends_3sec.mp3");
@@ -629,11 +614,11 @@ public void OnGameFrame()
 				}
 				if (scoreRemain < 10 && game.alarm_delay <= GetGameTime())
 				{
-					PlaySoundToAllClients(SoundAlarm);
+					PlaySoundToAllClients(GameSounds[Snd_CloseToWin]);
 					game.alarm_delay = GetGameTime() + 2.0;
 				}
 				game.team_score[team]++;
-				CheckPlayerHoldTime(game.carrier);
+				CheckCarrierHoldTime();
 				game.carrier_checktime = GetGameTime() + 1.0;
 				if (game.team_score[team] >= game.max_score)
 					EndRound(team);
@@ -643,7 +628,7 @@ public void OnGameFrame()
 		}
 	}
 
-	if (game.state = State_InProgress && game.team_unbalanced >= 2) //new autobalance setup because while loops suck
+	if (game.state == RoundState_RoundRunning && game.team_unbalanced >= 2) //new autobalance setup because while loops suck
 	{
 		if (game.check_balance_delay <= GetGameTime())
 		{
@@ -658,64 +643,66 @@ void CheckCarrierShouldMove()
 {
 	if (game.carrier_travelinterval <= GetGameTime())
 	{
-		game.carrier_shouldmove = false;
+		game.carrier_move = false;
 		game.flag.reset();
 	}
 	if (game.carrier_traveltick <= GetGameTime())
 	{
 		Vector3 position;
-		game.carrier.GetPosition(position, true);
+		game.carrier.GetPosition(position);
 		if (position.DistanceTo(game.carrier_lastpos) > game.carrier_traveldist)
 		{
 			//PrintCenterText(FlagCarrier, "");
-			game.carrier_shouldmove = false;
+			game.carrier_move = false;
 			InvalidateTravelTimers();
-			TravelTimer = CreateTimer(InitTravelDelay.FloatValue, Timer_MovePlayer, game.carrier.get());
+			TravelTimer = CreateTimer(InitTravelDelay.FloatValue, Timer_MovePlayer);
 			game.carrier_traveltick = FAR_FUTURE;
 			return;
 		}
-		CreateRingForClient(game.carrier.get(), GetClientTeam(game.carrier.get()), 0.21);
+		CreateRingForClient(game.carrier, 0.21);
 		game.carrier_traveltick = GetGameTime() + 0.2;
 	}
 }
 
-public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
+public Action OnPlayerRunCmd(int client)
 {
-	if (Player[client].respawn_time > 0.0 && game.state == State_InProgress && GetClientTeam(client) >= 2 && player[client].respawning)
+	if (PlayerInfo[client].respawn_time > 0.0 && game.state == RoundState_RoundRunning && GetClientTeam(client) >= 2 && PlayerInfo[client].respawning)
 	{
-		if (Player[client].respawn_tick <= GetGameTime())
+		if (PlayerInfo[client].respawn_tick <= GetGameTime())
 		{
-			Player[client].respawn_time -= 0.5;
+			PlayerInfo[client].respawn_time -= 0.5;
 			char respawnText[64];
-			Format(respawnText, sizeof respawnText, "Respawn in %.0f second%s", Player[client].respawn_time, CheckRespawnTime(Player[client]) ? "" : "s");
-			if (RespawnTime[client] < 1.0)
-			{
+
+			Format(respawnText, sizeof respawnText, "Respawn in %.0f second%s", PlayerInfo[client].respawn_time, CheckRespawnTime(PlayerInfo[client]) ? "" : "s");
+			if (PlayerInfo[client].respawn_time < 1.0)
 				Format(respawnText, sizeof respawnText, "Prepare to respawn...");
-			}
+
 			SetHudTextParams(-1.0, 0.7, 0.5, 255, 255, 255, 0);
-			if (Player[client].respawn_time <= 50.0)
+			if (PlayerInfo[client].respawn_time <= 50.0)
 				ShowSyncHudText(client, RespawnHud, "%s", respawnText);
-			Player[client].respawn_tick = GetGameTime() + 0.5;
-			if (Player[client].respawn_time <= 0.0 && !IsPlayerAlive(client))
+
+			PlayerInfo[client].respawn_tick = GetGameTime() + 0.5;
+			if (PlayerInfo[client].respawn_time <= 0.0 && !IsPlayerAlive(client))
 			{
 				TF2_RespawnPlayer(client);
+
 				if (!IsPlayerAlive(client)) //Reset respawn time in case player does not respawn
 				{
-					Player[client].respawn_time = RespawnTime.FloatValue;
-					Player[client].respawn_tick = FAR_FUTURE;
+					PlayerInfo[client].respawn_time = RespawnTime.FloatValue;
+					PlayerInfo[client].respawn_tick = FAR_FUTURE;
 				}
 			}
 		}
 	}
-	else if (!IsPlayerAlive(client) && Player[client].can_respawn)
+	else if (!IsPlayerAlive(client) && PlayerInfo[client].can_respawn)
 	{
-		if (Player[client].respawn_delay <= GetGameTime())
+		if (PlayerInfo[client].respawn_delay <= GetGameTime())
 		{
-			Player[client].respawn_tick = GetGameTime() + 0.5;
-			Player[client].respawning = true;
+			PlayerInfo[client].respawn_tick = GetGameTime() + 0.5;
+			PlayerInfo[client].respawning = true;
 		}
 	}
-	if (game.state == State_InProgress && Player[client].hud_refresh_tick <= GetGameTime())
+	if (game.state == RoundState_RoundRunning && PlayerInfo[client].hud_refresh_tick <= GetGameTime())
 	{
 		char InfoText[64];
 		int team = GetClientTeam(client);
@@ -735,20 +722,22 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 		else if (team == 1 || team == 0)
 		{
-			Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", game.steam_score[2], game.team_score[3], game.max_score, game.flag.active ? "Active" : "Inactive");
+			Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", game.team_score[2], game.team_score[3], game.max_score, game.flag.active ? "Active" : "Inactive");
 			SetHudTextParams(-1.0, 0.18, 0.5, 255, 255, 255, 255);
 			ShowSyncHudText(client, ScoreHud, "%s", InfoText);
 		}
-		Player[client].hud_refresh_tick = GetGameTime() + 0.5;
+		PlayerInfo[client].hud_refresh_tick = GetGameTime() + 0.5;
 	}
+
+	return Plugin_Continue;
 }
 
 
 /*************************************************
-STOCKS AND EQUIPMENT FUNCTIONS
+Helper Functions
 *************************************************/
 
-stock void SetupRespawnsForFlagTeam(int team)
+void SetupRespawnsForFlagTeam(int team)
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -757,37 +746,37 @@ stock void SetupRespawnsForFlagTeam(int team)
 			if (GetClientTeam(i) == team)
 			{
 				if (IsPlayerAlive(i))
-					Player[i].can_respawn = true;
+					PlayerInfo[i].can_respawn = true;
 				else
 				{
-					Player[i].respawn_delay = GetGameTime() + 0.1;
-					Player[i].respawn_time = RespawnTimeFlag.FloatValue;
-					Player[i].can_respawn = true;
+					PlayerInfo[i].respawn_delay = GetGameTime() + 0.1;
+					PlayerInfo[i].respawn_time = RespawnTimeFlag.FloatValue;
+					PlayerInfo[i].can_respawn = true;
 				}
 			}
 		}
 	}
 }
 
-stock bool CheckRespawnTime(PlayerWrapper client)
+bool CheckRespawnTime(PlayerWrapper client)
 {
 	if (1.0 <= client.respawn_time < 2.0)
 		return true;
 	return false;
 }
 
-stock bool IsValidClient(int client)
+bool IsValidClient(int client)
 {
 	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
 		return false;
-	
+
 	if (IsClientSourceTV(client) || IsClientReplay(client))
 		return false;
-	
+
 	return true;
 }
 
-stock void PlaySoundToAllClients(const char[] sound, int team = 0)
+void PlaySoundToAllClients(const char[] sound, int team = 0)
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -801,21 +790,20 @@ stock void PlaySoundToAllClients(const char[] sound, int team = 0)
 	}
 }
 
-stock int GetOppositeTeam(int team)
+int GetOppositeTeam(int team)
 {
 	if (team == 2)
 		return 3;
-		
+
 	if (team == 3)
 		return 2;
-		
+
 	return 0;
 }
 
-void GetBallSpawn()
+void GetBallSpawn(Vector3 position)
 {
 	int entity, points, pointIndex, spawnpoint[8];
-	float pos[3];
 	while ((entity = FindEntityByClassname(entity, "team_control_point")) != -1)
 	{
 		points++;
@@ -828,21 +816,20 @@ void GetBallSpawn()
 		pointIndex = 1;
 
 	//PrintToChatAll("Point %i being used as spawn", spawnpoint[pointIndex]);
-	GetEntPropVector(spawnpoint[pointIndex], Prop_Data, "m_vecOrigin", pos);
-	pos[2] += 35.0;
-	return pos;
+	Vector_GetProperty(spawnpoint[pointIndex], Prop_Data, "m_vecOrigin", position);
+	position.z += 35.0;
 }
 
-stock void RemoveEntities()
+void RemoveEntities()
 {
 	int ent = MaxClients + 1;
 	while ((ent = FindEntityByClassname(ent, "tf_logic_arena")) !=-1)
 		DispatchKeyValue(ent, "CapEnableDelay", "9999.0");
-		
+
 	ent = MaxClients + 1;
 	while ((ent = FindEntityByClassname(ent, "trigger_capture_area")) != -1)
 		AcceptEntityInput(ent, "Disable");
-		
+
 	ent = MaxClients + 1;
 	while ((ent = FindEntityByClassname(ent, "team_control_point")) != -1)
 	{
@@ -857,11 +844,11 @@ void OutlineClient(Client client, PlayerWrapper player)
 	{
 		if(!TF2_HasGlow(client.get()))
 		{
-			player.glow.set(TF2_CreateGlow(client.get()))
+			player.glow.set(TF2_CreateGlow(client.get()));
 			if(player.glow.valid())
 			{
 				int color[4], team;
-				team = GetClientTeam(client.get());
+				team = client.GetTeam();
 				switch (team)
 				{
 					case 2: color = {255, 0, 0, 255};
@@ -869,13 +856,13 @@ void OutlineClient(Client client, PlayerWrapper player)
 				}
 
 				SetVariantColor(color);
-				AcceptEntityInput(player.glow.get(), "SetGlowColor");
+				player.glow.input("SetGlowColor");
 			}
 		}
 	}
 }
 
-stock int TF2_CreateGlow(int client)
+int TF2_CreateGlow(int client)
 {
 	char name[64];
 	GetEntPropString(client, Prop_Data, "m_iName", name, sizeof name);
@@ -897,7 +884,7 @@ stock int TF2_CreateGlow(int client)
 	return glow;
 }
 
-stock bool TF2_HasGlow(int client)
+bool TF2_HasGlow(int client)
 {
 	int index = -1;
 	while ((index = FindEntityByClassname(index, "tf_glow")) != -1)
@@ -911,9 +898,9 @@ stock bool TF2_HasGlow(int client)
 
 stock void CheckTeamBalance()
 {
-	if (ImbalanceLimit.IntVlue == 0) //Do not balance teams if set to 0
+	if (ImbalanceLimit.IntValue == 0) //Do not balance teams if set to 0
 		return;
-		
+
 	//PrintToChatAll("Checking teams...");
 	int TeamCount[MAXTEAMS] = {0, 0, 0, 0};
 	int Unbalance;
@@ -927,7 +914,7 @@ stock void CheckTeamBalance()
 				TeamCount[team]++;
 		}
 	}
-	
+
 	//PrintToChatAll("Red Team Count: %i\nBlue Team Count: %i", TeamCount[2], TeamCount[3]);
 	if (TeamCount[2] - TeamCount[3] >= limit) //Red team has too many players
 	{
@@ -938,7 +925,7 @@ stock void CheckTeamBalance()
 	{
 		Unbalance = 3;
 	}
-	
+
 	else
 	{
 		//PrintToChatAll("Teams are already balanced");
