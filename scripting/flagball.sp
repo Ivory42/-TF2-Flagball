@@ -114,13 +114,13 @@ public void OnAllPluginsLoaded()
 	}
 }
 
-public Action PreventFlagDrop(int client, const char[] command, int argc)
+Action PreventFlagDrop(int client, const char[] command, int argc)
 {
 	MC_PrintToChat(client, "{green}[FB]{default} Cannot drop intel in this mode");
 	return Plugin_Handled;
 }
 
-public void PrecacheSounds()
+void PrecacheSounds()
 {
 	for (int i = 0; i != sizeof GameSounds; i++)
 		PrecacheSound(GameSounds[i]);
@@ -154,7 +154,7 @@ public void OnClientDisconnect(int client)
 		CheckTeamBalance();
 }
 
-public Action CMDGetPos(int client, int args)
+Action CMDGetPos(int client, int args)
 {
 	Vector3 pos;
 	Vector_GetClientPosition(client, pos);
@@ -182,7 +182,7 @@ MRESReturn UnloadRoundEndCheck(int hookid)
 	return MRES_Ignored;
 }
 
-public Action Ball_RoundEnd(Event event, const char[] name, bool dontBroadcast)
+Action Ball_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
 	game.state = RoundState_BetweenRounds;
 	InvalidateTravelTimers();
@@ -194,7 +194,7 @@ public Action Ball_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 PLAYER FUNCTIONS
 *************************************************/
 
-public Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
 	Client victim;
 	victim.userid = event.GetInt("userid");
@@ -220,7 +220,7 @@ public Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcas
 	return Plugin_Continue;
 }
 
-public Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcast)
+Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcast)
 {
 	Client client;
 	client.userid = event.GetInt("userid");
@@ -242,7 +242,7 @@ public Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcas
 	return Plugin_Continue;
 }
 
-public Action Ball_JoinTeam(Event event, const char[] name, bool dontBroadcast)
+Action Ball_JoinTeam(Event event, const char[] name, bool dontBroadcast)
 {
 	Client client;
 	client.userid = event.GetInt("userid");
@@ -277,7 +277,7 @@ void DisablePlayerRespawn(PlayerWrapper player)
 	player.can_respawn = false;
 }
 
-public void ToggleRespawns(int team_id, bool enable)
+void ToggleRespawns(int team_id, bool enable)
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -290,7 +290,7 @@ public void ToggleRespawns(int team_id, bool enable)
 	}
 }
 
-public void RemoveSentries(Client client) //Finds and destroys all sentry guns owned by a player
+void RemoveSentries(Client client) //Finds and destroys all sentry guns owned by a player
 {
 	if (!client.valid())
 		return;
@@ -306,7 +306,7 @@ public void RemoveSentries(Client client) //Finds and destroys all sentry guns o
 	}
 }
 
-public void CheckCarrierHoldTime()
+void CheckCarrierHoldTime()
 {
 	PlayerWrapper player;
 	GetPlayer(game.carrier, player);
@@ -325,7 +325,7 @@ public void CheckCarrierHoldTime()
 ROUND SETTINGS
 *************************************************/
 
-public void EndRound(int team)
+void EndRound(int team)
 {
 	game.state = RoundState_TeamWin;
 	switch (team)
@@ -335,7 +335,7 @@ public void EndRound(int team)
 	}
 }
 
-public Action Ball_RoundInit(Event event, const char[] name, bool dontBroadcast)
+Action Ball_RoundInit(Event event, const char[] name, bool dontBroadcast)
 {
 	game.state = RoundState_Preround;
 	RemoveEntities();
@@ -347,7 +347,7 @@ public Action Ball_RoundInit(Event event, const char[] name, bool dontBroadcast)
 	return Plugin_Continue;
 }
 
-public Action Ball_RoundBegin(Event event, const char[] name, bool dontBroadcast)
+Action Ball_RoundBegin(Event event, const char[] name, bool dontBroadcast)
 {
 	//SetupScoreHud();
 	game.state = RoundState_RoundRunning;
@@ -370,7 +370,7 @@ public Action Ball_RoundBegin(Event event, const char[] name, bool dontBroadcast
 	return Plugin_Continue;
 }
 
-public void ResetScores()
+void ResetScores()
 {
 	for (int team = 2; team < MAXTEAMS; team++)
 	{
@@ -407,7 +407,7 @@ Action TimerSoundStart(Handle timer)
 	return Plugin_Stop;
 }
 
-public Action EnableFlag(Handle timer)
+Action EnableFlag(Handle timer)
 {
 	game.flag.entity.input("Enable");
 	PlaySoundToAllClients(GameSounds[Snd_FlagActive]);
@@ -424,7 +424,7 @@ public Action EnableFlag(Handle timer)
 FLAG EVENTS AND FUNCTIONS
 *************************************************/
 
-public Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
+Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
 {
 	int type = event.GetInt("eventtype"); //type corresponding to event
 	Client client;
@@ -463,7 +463,7 @@ public Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
 	return Plugin_Continue;
 }
 
-public Action Timer_MovePlayer(Handle timer)
+Action Timer_MovePlayer(Handle timer)
 {
 	if (game.carrier.valid())
 	{
@@ -520,7 +520,7 @@ void CreateRingForClient(Client client, float duration)
 	}
 }
 
-public void Ball_FlagDropped(const char[] output, int caller, int victim, float delay)
+void Ball_FlagDropped(const char[] output, int caller, int victim, float delay)
 {
 	if (game.state == RoundState_RoundRunning)
 	{
@@ -571,14 +571,14 @@ void InvalidateTravelTimers()
 	game.carrier_travelinterval = FAR_FUTURE;
 }
 
-public void Ball_FlagReturned(const char[] output, int caller, int victim, float delay)
+void Ball_FlagReturned(const char[] output, int caller, int victim, float delay)
 {
 	Vector3 position;
 	GetBallSpawn(position);
 	game.flag.respawn(position, false);
 }
 
-public int CreateNeutralFlag() //returns a reference to the flag created
+int CreateNeutralFlag() //returns a reference to the flag created
 {
 	EntityWrapper ball;
 	ball.set(CreateEntityByName("item_teamflag"));
@@ -896,7 +896,7 @@ bool TF2_HasGlow(int client)
 	return false;
 }
 
-stock void CheckTeamBalance()
+void CheckTeamBalance()
 {
 	if (ImbalanceLimit.IntValue == 0) //Do not balance teams if set to 0
 		return;
@@ -1003,7 +1003,7 @@ bool BalanceTeams(int teamnum)
 	return false;
 }
 
-stock bool TeamsUnbalanced()
+bool TeamsUnbalanced()
 {
 	int TeamCount[MAXTEAMS] = {0, 0, 0, 0};
 	for (int player = 1; player <= MaxClients; player++)
