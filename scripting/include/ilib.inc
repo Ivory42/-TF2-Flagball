@@ -459,3 +459,17 @@ stock void Entity_CreateParticle(EntityWrapper entity, const char[] name)
 
 	entity.set(particle);
 }
+
+stock int ILIB_GetClients(Client[] clients)
+{
+	int count;
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (IsClientInGame(i))
+		{
+			clients[count].set(i);
+			count++;
+		}
+	}
+	return count;
+}
