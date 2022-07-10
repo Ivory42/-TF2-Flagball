@@ -1,8 +1,10 @@
 #include <tf2>
 #include <tf2_stocks>
 #include <sdktools>
+#include <sdkhooks>
 #include "ilib/vector.inc"
 #include "ilib/traces.inc"
+#include "ilib/colors.inc"
 
 #if defined _ilib_included
  #endinput
@@ -45,9 +47,25 @@ enum struct EntityWrapper
 			AcceptEntityInput(entity, command, activator, caller, id);
 		}
 	}
+	
+	void SetColor(LinearColor color)
+	{
+		if (this.valid())
+			SetEntityRenderColor(this.get(), color.R, color.G, color.B, color.A);
+	}
+	
+	void GetColor(LinearColor color)
+	{
+		if (this.valid())
+			GetEntityRenderColor(this.get(), color.R, color.G, color.B, color.A);
+	}
 
 	//Dispatch Spawn
 	void dispatch()
+	{
+		DispatchSpawn(this.get());
+	}
+	void spawn()
 	{
 		DispatchSpawn(this.get());
 	}
@@ -56,6 +74,18 @@ enum struct EntityWrapper
 	void activate()
 	{
 		ActivateEntity(this.get());
+	}
+	
+	void Hook(SDKHookType type, SDKHookCB callback)
+	{
+		if (this.valid())
+			SDKHook(this.get(), type, callback);
+	}
+	
+	void Unhook(SDKHookType type, SDKHookCB callback)
+	{
+		if (this.valid())
+			SDKUnhook(this.get(), type, callback);
 	}
 
 	void HookOutput(const char[] output, EntityOutput callback, bool once)
@@ -93,6 +123,25 @@ enum struct EntityWrapper
 
 			TeleportEntity(this.get(), position, angles, velocity);
 		}
+	}
+	
+	void SetMoveType(MoveType type)
+	{
+		if (this.valid())
+			SetEntityMoveType(this.get(), type);
+	}
+	
+	bool FindEntity(const char[] classname)
+	{
+		int entity;
+		bool result;
+		while ((entity = FindEntityByClassname(MaxClients + 1, classname)) != -1)
+		{
+			this.set(entity);
+			result = true;
+			break;
+		}
+		return result;
 	}
 
 	//Marks this pointer for removal
@@ -137,7 +186,7 @@ enum struct EntityWrapper
 	}
 
 	//Stores a vector property as a Vector3
-	void GetPropVector(PropType type, const char[] property, Vector3 vector, int element)
+	void GetPropVector(PropType type, const char[] property, Vector3 vector, int element = 0)
 	{
 		if (this.valid())
 			Vector_GetProperty(this.get(), type, property, vector, element);
@@ -164,6 +213,12 @@ enum struct EntityWrapper
 			LogError("Pointer reference is invalid! Pointer.GetPropFloat failed!");
 			return -1.0;
 		}
+	}
+	
+	void SetModel(const char[] modelname)
+	{
+		if (this.valid())
+			SetEntityModel(this.get(), modelname);
 	}
 }
 
@@ -193,6 +248,12 @@ enum struct Client
 			return IsClientInGame(client);
 
 		return false;
+	}
+	
+	void SetViewTarget(int entity)
+	{
+		if (this.valid() && IsValidEntity(entity) && entity)
+			SetClientViewEntity(this.get(), entity);
 	}
 
 	//Teleports this client
@@ -290,7 +351,7 @@ enum struct Client
 	}
 
 	//Stores a vector property as a Vector3
-	void GetPropVector(PropType type, const char[] property, Vector3 vector, int element)
+	void GetPropVector(PropType type, const char[] property, Vector3 vector, int element = 0)
 	{
 		if (this.valid())
 			Vector_GetProperty(this.get(), type, property, vector, element);
@@ -353,6 +414,15 @@ enum struct Client
 			Rotator_GetClientAbsAngles(this.get(), rot);
 		else
 			LogError("Invalid Client! Client.GetAngles failed!");
+	}
+	
+	void input(const char[] command, int activator = -1, int caller = -1, int id = 0)
+	{
+		if (this.valid())
+		{
+			int entity = this.get();
+			AcceptEntityInput(entity, command, activator, caller, id);
+		}
 	}
 }
 
@@ -458,18 +528,4 @@ stock void Entity_CreateParticle(EntityWrapper entity, const char[] name)
 	AcceptEntityInput(particle, "Start");
 
 	entity.set(particle);
-}
-
-stock int ILIB_GetClients(Client[] clients)
-{
-	int count;
-	for (int i = 1; i <= MaxClients; i++)
-	{
-		if (IsClientInGame(i))
-		{
-			clients[count].set(i);
-			count++;
-		}
-	}
-	return count;
 }
