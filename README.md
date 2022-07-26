@@ -1,7 +1,7 @@
 # -TF2-Flagball
 Oddball for Team Fortress 2.
 
-The classic gamemode from Halo remade to fit TF2's gameplay flow and act as a revamp for Arena. Shortly after the round starts, a neutral flag will spawn for either team to capture. Holding onto the flag will increase your team's score. Respawns enabled for the team that is not in posession of the flag.
+The classic gamemode from Halo remade to fit TF2's gameplay flow and act as a revamp for Arena. Shortly after the round starts, a neutral flag will spawn for either team to capture. Holding onto the flag will increase your team's score. Respawns enabled for the team that is not in possession of the flag.
 
 ## ConVars
 - `fb_respawn_time` - Base respawn time for all players | Default: 4
