@@ -2,14 +2,15 @@
 
 #include <flagball>
 
-#define PLUGIN_VERSION	"v0.1.6"
+#define PLUGIN_VERSION	"v0.2.0"
 
 public Plugin myinfo =
 {
     name    = "[TF2] Oddball",
     author  = "IvoryPal",
     description = "Hold the flag for the time specified to win. Respawns disabled for the team in possession of the flag.",
-    version = PLUGIN_VERSION
+    version = PLUGIN_VERSION,
+	url = "https://github.com/Ivory42/-TF2-Flagball"
 }
 
 /*************************************************
@@ -32,7 +33,7 @@ public void OnPluginStart()
 	RingHeight = CreateConVar("fb_carrier_ring_height", "3", "How many layers for the ring should be added above and below the player");
 
 	ImbalanceLimit = FindConVar("mp_teams_unbalance_limit");
-	game.max_score = MaxScore.IntValue;
+	Game.MaxScore = MaxScore.IntValue;
 
 	HookEvent("teamplay_round_start", Ball_RoundInit);
 	HookEvent("arena_round_start", Ball_RoundBegin);
@@ -53,10 +54,11 @@ public void OnPluginStart()
 	FClient client;
 	// Is this necessary? most likely not, I just hate having to use IsValidClient type stocks since everyone seems to use a slightly different variation of it.
 	// FClient::Valid() is mine :)
-	for (client.Set(1); client.Get() <= MaxClients; client.Next())
+	for (int i = 1; i <= MaxClients; i++)
 	{
+		client.Set(i);
 		if (client.Valid())
-			OnClientPostAdminCheck(client.Get());
+			OnClientPostAdminCheck(i);
 	}
 }
 
@@ -72,19 +74,19 @@ public void OnMapStart()
 	if (resourceRef.Valid())
 		SDKHook(resourceRef.Get(), SDKHook_ThinkPost, UpdatePlayerScore);
 
-	GameData config = new GameData("tf2-roundend.games");
+	GameData config = new GameData("flagball");
 	if (!config)
-		SetFailState("Failed to find tf2-roundend.games gamedata! Cannot proceed!");
+		SetFailState("Failed to find flagball gamedata! Cannot proceed!");
 
-	game.hook_offset = config.GetOffset("SetWinningTeam");
-	game.roundhook = DHookCreate(game.hook_offset, HookType_GameRules, ReturnType_Void, ThisPointer_Ignore, CheckRoundEnd);
-	game.roundhook.AddParam(HookParamType_Int);
-	game.roundhook.AddParam(HookParamType_Int);
-	game.roundhook.AddParam(HookParamType_Bool);
-	game.roundhook.AddParam(HookParamType_Bool);
-	game.roundhook.AddParam(HookParamType_Bool);
-	game.roundhook.AddParam(HookParamType_Bool);
-	game.hookid = game.roundhook.HookGamerules(Hook_Pre, UnloadRoundEndCheck);
+	Game.HookOffset = config.GetOffset("SetWinningTeam");
+	Game.RoundHook = DHookCreate(Game.HookOffset, HookType_GameRules, ReturnType_Void, ThisPointer_Ignore, CheckRoundEnd);
+	Game.RoundHook.AddParam(HookParamType_Int);
+	Game.RoundHook.AddParam(HookParamType_Int);
+	Game.RoundHook.AddParam(HookParamType_Bool);
+	Game.RoundHook.AddParam(HookParamType_Bool);
+	Game.RoundHook.AddParam(HookParamType_Bool);
+	Game.RoundHook.AddParam(HookParamType_Bool);
+	Game.HookId = Game.RoundHook.HookGamerules(Hook_Pre, UnloadRoundEndCheck);
 	delete config;
 
 	InvalidateTravelTimers();
@@ -107,7 +109,7 @@ public void OnAllPluginsLoaded()
 		Handle plugin = GetMyHandle();
 		char namePlugin[256];
 		GetPluginFilename(plugin, namePlugin, sizeof(namePlugin));
-		PrintToServer("[FlagBall] Not Arena, unloading...");
+		LogMessage("[FlagBall] Not Arena, unloading...");
 		ServerCommand("sm plugins unload %s", namePlugin);
 	}
 }
@@ -137,18 +139,17 @@ public void OnClientPostAdminCheck(int client)
 
 void ResetPlayerVars(FPlayerInfo player)
 {
-	player.score = 0;
-	player.can_respawn = true;
-	player.respawn_delay = GetGameTime() + 0.5;
-	player.respawn_time = 15.0;
-	player.respawning = false;
-	player.hold_time = 0;
-	player.glow.Kill();
+	player.Score = 0;
+	player.CanRespawn = true;
+	player.RespawnTimer.Set(15.0);
+	player.Respawning = false;
+	player.HoldTime = 0;
+	player.Glow.Kill();
 }
 
 public void OnClientDisconnect(int client)
 {
-	if (game.state == RoundState_RoundRunning)
+	if (Game.State == RoundState_RoundRunning)
 		CheckTeamBalance();
 }
 
@@ -157,16 +158,17 @@ Action CMDGetPos(int client, int args)
 	FVector pos;
 	Vector_GetClientPosition(client, pos);
 	PrintToChat(client, "Origin: 0: %.1f, 1: %.1f, 2: %.1f", pos.x, pos.y, pos.z);
-	return Plugin_Continue;
+	return Plugin_Handled;
 }
 
 /*************************************************
 ROUND END CONDITIONS
 *************************************************/
 
+
 MRESReturn CheckRoundEnd(DHookParam params)
 {
-	if (game.state != RoundState_TeamWin)
+	if (Game.State != RoundState_TeamWin)
 		return MRES_Supercede;
 
 	return MRES_Ignored;
@@ -174,7 +176,7 @@ MRESReturn CheckRoundEnd(DHookParam params)
 
 MRESReturn UnloadRoundEndCheck(int hookid)
 {
-	if (game.state != RoundState_TeamWin)
+	if (Game.State != RoundState_TeamWin)
 		return MRES_Supercede;
 
 	return MRES_Ignored;
@@ -182,11 +184,12 @@ MRESReturn UnloadRoundEndCheck(int hookid)
 
 Action Ball_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
-	game.state = RoundState_BetweenRounds;
+	Game.State = RoundState_BetweenRounds;
 	InvalidateTravelTimers();
 
 	return Plugin_Continue;
 }
+
 
 /*************************************************
 PLAYER FUNCTIONS
@@ -197,23 +200,19 @@ Action Ball_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	FClient victim;
 	victim = ConstructClient(event.GetInt("userid"), true);
 
-	FPlayerInfo player;
-	player = GetPlayer(victim);
+	int victimId = victim.Get();
 
 	int team = victim.GetTeam();
-	if (!game.has_flag[team] && player.can_respawn)
+	if (!Game.HasFlag[team] && PlayerInfo[victimId].CanRespawn)
 	{
-		player.respawn_delay = GetGameTime() + 4.0;
-		player.respawn_time = RespawnTime.FloatValue;
+		PlayerInfo[victimId].RespawnDelay.Set(4.0, false);
+		PlayerInfo[victimId].RespawnTimer.Set(RespawnTime.FloatValue);
 	}
 	else if (victim.GetClass() == TFClass_Engineer)
 	{
 		if (DestroySentries.BoolValue)
 			RemoveSentries(victim);
 	}
-
-	//Update our struct to reflect the changes made
-	SetPlayer(victim, player);
 
 	return Plugin_Continue;
 }
@@ -223,17 +222,14 @@ Action Ball_SpawnPlayer(Event event, const char[] name, bool dontBroadcast)
 	FClient client;
 	client = ConstructClient(event.GetInt("userid"), true);
 
-	FPlayerInfo player;
-	player = GetPlayer(client);
+	int clientId = client.Get();
 
 	if (client.Valid())
 	{
-		player.respawning = false;
-		player.hud_refresh_tick = 0.0;
-		if (game.state == RoundState_RoundRunning)
+		PlayerInfo[clientId].Respawning = false;
+		PlayerInfo[clientId].HudTick.Set(0.5, false, true);
+		if (Game.State == RoundState_RoundRunning)
 			client.AddCondition(TFCond_Ubercharged, 3.0);
-
-		SetPlayer(client, player);
 	}
 
 	return Plugin_Continue;
@@ -244,48 +240,44 @@ Action Ball_JoinTeam(Event event, const char[] name, bool dontBroadcast)
 	FClient client;
 	client = ConstructClient(event.GetInt("userid"), true);
 
-	FPlayerInfo player;
-	player = GetPlayer(client);
+	int clientId = client.Get();
 
 	int team = event.GetInt("team");
 
-	if (game.state == RoundState_RoundRunning && team < 2)
+	if (Game.State == RoundState_RoundRunning && team < 2)
 		CheckTeamBalance();
 
-	if (!game.has_flag[team])
-		SetPlayerRespawnTime(player, RespawnTime.FloatValue);
+	if (!Game.HasFlag[team])
+		SetPlayerRespawnTime(PlayerInfo[clientId], RespawnTime.FloatValue);
 	else
-		DisablePlayerRespawn(player);
-
-	SetPlayer(client, player);
+		DisablePlayerRespawn(PlayerInfo[clientId]);
 
 	return Plugin_Continue;
 }
 
 void SetPlayerRespawnTime(FPlayerInfo player, float time)
 {
-	player.can_respawn = true;
-	player.respawn_time = time;
-	player.respawn_tick = GetGameTime() + 0.5;
+	player.CanRespawn = true;
+	player.RespawnTimer.Set(time, false);
 }
 
 void DisablePlayerRespawn(FPlayerInfo player)
 {
-	player.can_respawn = false;
+	player.CanRespawn = false;
 }
 
 void ToggleRespawns(int team_id, bool enable)
 {
+	FClient client;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		FClient client;
-		client = ConstructClient(i);
+		client.Set(i);
 
 		if (client.Valid())
 		{
 			int team = client.GetTeam();
 			if (team == team_id)
-				PlayerInfo[i].can_respawn = enable;
+				PlayerInfo[i].CanRespawn = enable;
 		}
 	}
 }
@@ -308,17 +300,16 @@ void RemoveSentries(FClient client) //Finds and destroys all sentry guns owned b
 
 void CheckCarrierHoldTime()
 {
-	FPlayerInfo player;
-	player = GetPlayer(game.carrier);
-
-	player.hold_time++;
-	if (player.hold_time >= HoldTimePoints.IntValue)
+	if (Game.Carrier.Valid())
 	{
-		player.hold_time = 0;
-		player.score++;
+		int carrierId = Game.Carrier.Get();
+		PlayerInfo[carrierId].HoldTime++;
+		if (PlayerInfo[carrierId].HoldTime >= HoldTimePoints.IntValue)
+		{
+			PlayerInfo[carrierId].HoldTime = 0;
+			PlayerInfo[carrierId].Score++;
+		}
 	}
-
-	SetPlayer(game.carrier, player);
 }
 
 /*************************************************
@@ -327,7 +318,7 @@ ROUND SETTINGS
 
 void EndRound(int team)
 {
-	game.state = RoundState_TeamWin;
+	Game.State = RoundState_TeamWin;
 	switch (team)
 	{
 		case 2: ServerCommand("mp_forcewin 2");
@@ -337,12 +328,12 @@ void EndRound(int team)
 
 Action Ball_RoundInit(Event event, const char[] name, bool dontBroadcast)
 {
-	game.state = RoundState_Preround;
+	Game.State = RoundState_Preround;
 	RemoveEntities();
 	ResetScores();
 
 	//CheckTeamBalance(true);
-	game.flag.active = false;
+	Game.Flag.Active = false;
 
 	return Plugin_Continue;
 }
@@ -350,19 +341,21 @@ Action Ball_RoundInit(Event event, const char[] name, bool dontBroadcast)
 Action Ball_RoundBegin(Event event, const char[] name, bool dontBroadcast)
 {
 	//SetupScoreHud();
-	game.state = RoundState_RoundRunning;
+	Game.State = RoundState_RoundRunning;
 
 	FVector spawnpos;
-	game.flag = CreateNeutralFlag(); //Returns a flag object reference
+	Game.Flag = CreateNeutralFlag(); //Returns a flag object reference
 	spawnpos = GetBallSpawn();
-	game.flag.Respawn(spawnpos, true);
+	Game.Flag.Respawn(spawnpos, true);
 
 	CreateTimer(2.0, TimerSoundStart);
 	CreateTimer(FlagEnableTime.FloatValue, EnableFlag);
 
-	game.carrier_traveldist = TravelDist.FloatValue;
-	game.ring_height = RingHeight.IntValue;
-	game.balance_delay = 0.0;
+	Game.CarrierTravelDist = TravelDist.FloatValue;
+	Game.RingHeight = RingHeight.IntValue;
+	Game.BalanceDelay.Pause();
+
+	Game.AlarmDelay.Set(2.0, false, true);
 
 	MC_PrintToChatAll("{green}[FB] {default}The flag will be enabled in %.0fs!", FlagEnableTime.FloatValue);
 	CheckTeamBalance();
@@ -374,14 +367,14 @@ void ResetScores()
 {
 	for (int team = 2; team < MAXTEAMS; team++)
 	{
-		game.team_score[team] = 0;
+		Game.TeamScore[team] = 0;
 		ToggleRespawns(team, true);
-		game.has_flag[team] = false;
+		Game.HasFlag[team] = false;
 	}
-	game.max_score = MaxScore.IntValue;
-	game.carrier.Clear();
-	game.flag.away = false;
-	game.flag.team = -1;
+	Game.MaxScore = MaxScore.IntValue;
+	Game.Carrier.Clear();
+	Game.Flag.Away = false;
+	Game.Flag.Team = -1;
 }
 
 /*************************************************
@@ -390,15 +383,15 @@ HUD AND TIMER FUNCTIONS
 
 void UpdatePlayerScore(int entity)
 {
+	FClient client;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		FClient client;
 		client = ConstructClient(i);
-		if(!client.Valid() || PlayerInfo[i].score < 0)
+		if(!client.Valid() || PlayerInfo[i].Score < 0)
 			continue;
 
 		int score = GetEntProp(entity, Prop_Send, "m_iTotalScore", _, i);
-		score += PlayerInfo[i].score;
+		score += PlayerInfo[i].Score;
 		SetEntProp(entity, Prop_Send, "m_iTotalScore", score, _, i);
 	}
 }
@@ -411,13 +404,13 @@ Action TimerSoundStart(Handle timer)
 
 Action EnableFlag(Handle timer)
 {
-	game.flag.entity.Input("Enable");
+	Game.Flag.GetObject().Input("Enable");
 	PlaySoundToAllClients(GameSounds[Snd_FlagActive]);
 	PrintCenterTextAll("Flag Enabled!");
 
 	SetVariantInt(15);
-	game.flag.entity.Input("SetReturnTime");
-	game.flag.active = true;
+	Game.Flag.GetObject().Input("SetReturnTime");
+	Game.Flag.Active = true;
 
 	return Plugin_Stop;
 }
@@ -435,30 +428,28 @@ Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
 	if (!client.Valid())
 		return Plugin_Continue;
 
-	FPlayerInfo player;
-	player = GetPlayer(client);
+	int clientId = client.Get();
 
 	switch (type)
 	{
 		case 1: //Flag Taken
 		{
 			int team = client.GetTeam();
-			game.carrier = client;
-			OutlineClient(client, player);
-			game.flag.team = team;
-			game.flag.away = true;
-			game.carrier_checktime = GetGameTime() + 1.0;
-			game.has_flag[team] = true;
+			Game.Carrier = client;
+			OutlineClient(client, PlayerInfo[clientId]);
+			Game.Flag.Team = team;
+			Game.Flag.Away = true;
+			Game.CarrierCheckTime.Set(1.0, false, true);
+			Game.HasFlag[team] = true;
 			int skin = GetOppositeTeam(team);
 			ToggleRespawns(team, false);
 			SetVariantInt(skin);
-			game.flag.entity.Input("SetTeam");
+			Game.Flag.GetObject().Input("SetTeam");
 			if (MarkCarrier.BoolValue)
 				client.AddCondition(TFCond_MarkedForDeath, TFCondDuration_Infinite);
 
 			TravelTimer = CreateTimer(InitTravelDelay.FloatValue, Timer_MovePlayer);
 
-			SetPlayer(client, player);
 			return Plugin_Continue;
 		}
 	}
@@ -467,15 +458,15 @@ Action Ball_FlagEvent(Event event, const char[] name, bool dontBroadcast)
 
 Action Timer_MovePlayer(Handle timer)
 {
-	if (game.carrier.Valid())
+	if (Game.Carrier.Valid())
 	{
 		SendTravelMessage();
-		game.carrier_move = true;
-		game.carrier_lastpos = game.carrier.GetPosition();
+		Game.CarrierMove = true;
+		Game.CarrierLastPos = Game.Carrier.GetPosition();
 
-		game.carrier_traveltick = GetGameTime() + 0.2;
-		game.carrier_travelinterval = GetGameTime() + TravelInterval.FloatValue;
-		CreateRingForClient(game.carrier, 0.21);
+		Game.CarrierTravelTick.Set(0.2, false, true);
+		Game.CarrierTravelInterval.Set(TravelInterval.FloatValue, false);
+		CreateRingForClient(Game.Carrier, 0.21);
 	}
 	TravelTimer = INVALID_HANDLE;
 	return Plugin_Stop;
@@ -489,9 +480,9 @@ void CreateRingForClient(FClient client, float duration)
 
 	int team = client.GetTeam();
 	int color[4], totalRings;
-	float size = game.carrier_traveldist * 2.0;
+	float size = Game.CarrierTravelDist * 2.0;
 	FVector position;
-	position = game.carrier_lastpos;
+	position = Game.CarrierLastPos;
 	switch (team)
 	{
 		case 2: color = {100, 0, 0, 200};
@@ -500,8 +491,8 @@ void CreateRingForClient(FClient client, float duration)
 	}
 
 	// We lower the beginning position to make room for stacked rings
-	position.z -= game.ring_height * 100.0;
-	totalRings = (game.ring_height * 2) + 1;
+	position.z -= Game.RingHeight * 100.0;
+	totalRings = (Game.RingHeight * 2) + 1;
 
 	FTempentProperties info;
 	info.radius = size - 1.0;
@@ -523,32 +514,33 @@ void CreateRingForClient(FClient client, float duration)
 
 void Ball_FlagDropped(const char[] output, int caller, int victim, float delay)
 {
-	if (game.state == RoundState_RoundRunning)
+	if (Game.State == RoundState_RoundRunning)
 	{
-		int player = game.carrier.Get();
-		PlayerInfo[player].glow.Kill();
+		int playerId = Game.Carrier.Get();
+		PlayerInfo[playerId].Glow.Kill();
 
-		SetupRespawnsForFlagTeam(game.flag.team);
-		game.has_flag[game.flag.team] = false;
+		SetupRespawnsForFlagTeam(Game.Flag.Team);
+		Game.HasFlag[Game.Flag.Team] = false;
+
 		//SetFlagNeutral();
-		game.flag.SetNeutral();
+		Game.Flag.SetNeutral();
 
 		SetVariantInt(FlagDisableTime.IntValue + 1);
-		game.flag.entity.Input("SetReturnTime");
+		Game.GetFlag().Input("SetReturnTime");
 
 		if (FlagDisableTime.IntValue > 0)
 		{
-			game.flag.entity.Input("Disable");
+			Game.GetFlag().Input("Disable");
 			CreateTimer(FlagDisableTime.FloatValue, EnableFlag);
 		}
 
-		game.carrier.RemoveCondition(TFCond_MarkedForDeath);
-		game.flag.active = false;
-		game.carrier.Clear();
-		game.flag.team = 0;
-		game.flag.away = false;
+		Game.Carrier.RemoveCondition(TFCond_MarkedForDeath);
+		Game.Flag.Active = false;
+		Game.Carrier.Clear();
+		Game.Flag.Team = 0;
+		Game.Flag.Away = false;
 		InvalidateTravelTimers();
-		game.carrier_move = false;
+		Game.CarrierMove = false;
 	}
 }
 
@@ -556,8 +548,8 @@ void SendTravelMessage()
 {
 	char msg[256];
 	Format(msg, sizeof msg, "Alert! You must exit the ring within %i seconds to keep possession of the flag!", TravelInterval.IntValue);
-	game.carrier.PrintCenterText(msg);
-	game.carrier.EmitSound(GameSounds[Snd_Move]);
+	Game.Carrier.PrintCenterText(msg);
+	Game.Carrier.EmitSound(GameSounds[Snd_Move]);
 }
 
 void InvalidateTravelTimers()
@@ -567,14 +559,14 @@ void InvalidateTravelTimers()
 		KillTimer(TravelTimer);
 		TravelTimer = INVALID_HANDLE;
 	}
-	game.carrier_travelinterval = FAR_FUTURE;
+	Game.CarrierTravelInterval.Clear();
 }
 
 void Ball_FlagReturned(const char[] output, int caller, int victim, float delay)
 {
 	FVector position;
 	position = GetBallSpawn();
-	game.flag.Respawn(position, false);
+	Game.Flag.Respawn(position, false);
 }
 
 FTeamFlag CreateNeutralFlag() //returns a reference to the flag created
@@ -587,22 +579,22 @@ FTeamFlag CreateNeutralFlag() //returns a reference to the flag created
 	ball.Spawn();
 
 	FTeamFlag flag;
-	flag.active = false;
+	flag.Active = false;
 
-	flag.entity = ball;
+	flag.Entity = ball;
 	return flag;
 }
 
 public void OnGameFrame()
 {
-	if (game.flag.away && game.state == RoundState_RoundRunning)
+	if (Game.Flag.Away && Game.State == RoundState_RoundRunning)
 	{
-		int team = game.flag.team;
+		int team = Game.Flag.Team;
 		if (team >= 2)
 		{
-			if (game.carrier_checktime <= GetGameTime())
+			if (Game.CarrierCheckTime.Expired())
 			{
-				int scoreRemain = (game.max_score - game.team_score[team]) - 1;
+				int scoreRemain = (Game.MaxScore - Game.TeamScore[team]) - 1;
 				switch (scoreRemain)
 				{
 					case 30: PlaySoundToAllClients(GameSounds[Snd_30]);
@@ -614,96 +606,89 @@ public void OnGameFrame()
 					case 2: PlaySoundToAllClients("vo/announcer_ends_2sec.mp3");
 					case 1: PlaySoundToAllClients("vo/announcer_ends_1sec.mp3");
 				}
-				if (scoreRemain < 10 && game.alarm_delay <= GetGameTime())
-				{
+				if (scoreRemain < 10 && Game.AlarmDelay.Expired())
 					PlaySoundToAllClients(GameSounds[Snd_CloseToWin]);
-					game.alarm_delay = GetGameTime() + 2.0;
-				}
-				game.team_score[team]++;
+
+				Game.TeamScore[team]++;
 				CheckCarrierHoldTime();
-				game.carrier_checktime = GetGameTime() + 1.0;
-				if (game.team_score[team] >= game.max_score)
+
+				if (Game.TeamScore[team] >= Game.MaxScore)
 					EndRound(team);
 			}
-			if (game.carrier_move)
+			if (Game.CarrierMove)
 				CheckCarrierShouldMove();
 		}
 	}
 
-	if (game.state == RoundState_RoundRunning && game.team_unbalanced >= 2)
+	if (Game.State == RoundState_RoundRunning && Game.TeamUnbalanced >= 2)
 	{
-		if (game.check_balance_delay <= GetGameTime())
+		if (Game.CheckBalanceDelay.Expired())
 		{
 			//PrintToChatAll("Balancing Teams");
-			if (BalanceTeams(game.team_unbalanced))
-				game.check_balance_delay = GetGameTime() + 0.2; //try and balance a player every 0.2 seconds until teams are properly balanced
+			if (BalanceTeams(Game.TeamUnbalanced))
+				Game.CheckBalanceDelay.Loop(); //try and balance a player every 0.2 seconds until teams are properly balanced
 		}
 	}
 }
 
 void CheckCarrierShouldMove()
 {
-	if (game.carrier_travelinterval <= GetGameTime())
+	if (Game.CarrierTravelInterval.Expired())
 	{
-		game.carrier_move = false;
-		game.flag.Reset();
+		Game.CarrierMove = false;
+		Game.Flag.Reset();
 	}
-	if (game.carrier_traveltick <= GetGameTime())
+	if (Game.CarrierTravelTick.Expired())
 	{
 		FVector position;
-		position = game.carrier.GetPosition();
-		if (position.DistanceTo(game.carrier_lastpos) > game.carrier_traveldist)
+		position = Game.Carrier.GetPosition();
+		if (position.DistanceTo(Game.CarrierLastPos) > Game.CarrierTravelDist)
 		{
-			game.carrier_move = false;
+			Game.CarrierMove = false;
 			InvalidateTravelTimers();
 			TravelTimer = CreateTimer(InitTravelDelay.FloatValue, Timer_MovePlayer);
-			game.carrier_traveltick = FAR_FUTURE;
+			Game.CarrierTravelTick.Clear();
 			return;
 		}
-		CreateRingForClient(game.carrier, 0.21);
-		game.carrier_traveltick = GetGameTime() + 0.2;
+		CreateRingForClient(Game.Carrier, 0.21);
 	}
 }
 
 public Action OnPlayerRunCmd(int client)
 {
-	if (PlayerInfo[client].respawn_time > 0.0 && game.state == RoundState_RoundRunning && GetClientTeam(client) >= 2 && PlayerInfo[client].respawning)
+	// Our player is still respawning
+	if (Game.State == RoundState_RoundRunning && GetClientTeam(client) >= 2 && PlayerInfo[client].Respawning)
 	{
-		if (PlayerInfo[client].respawn_tick <= GetGameTime())
+		if (!PlayerInfo[client].RespawnTimer.Expired())
 		{
-			PlayerInfo[client].respawn_time -= 0.5;
+			float timerRemain = PlayerInfo[client].RespawnTimer.GetTimeRemaining();
 			char respawnText[64];
 
-			Format(respawnText, sizeof respawnText, "Respawn in %.0f second%s", PlayerInfo[client].respawn_time, CheckRespawnTime(PlayerInfo[client]) ? "" : "s");
-			if (PlayerInfo[client].respawn_time < 1.0)
-				Format(respawnText, sizeof respawnText, "Prepare to respawn...");
+			FormatEx(respawnText, sizeof respawnText, "Respawn in %0.f second%s", timerRemain, CheckRespawnTime(PlayerInfo[client]) ? "" : "s");
+			if (timerRemain < 1.0)
+				FormatEx(respawnText, sizeof respawnText, "Prepare to respawn...");
 
 			SetHudTextParams(-1.0, 0.7, 0.5, 255, 255, 255, 0);
-			if (PlayerInfo[client].respawn_time <= 50.0)
-				ShowSyncHudText(client, RespawnHud, "%s", respawnText);
-
-			PlayerInfo[client].respawn_tick = GetGameTime() + 0.5;
-			if (PlayerInfo[client].respawn_time <= 0.0 && !IsPlayerAlive(client))
-			{
-				TF2_RespawnPlayer(client);
-
-				if (!IsPlayerAlive(client)) //Reset respawn time in case player does not respawn
-				{
-					PlayerInfo[client].respawn_time = RespawnTime.FloatValue;
-					PlayerInfo[client].respawn_tick = FAR_FUTURE;
-				}
-			}
+			//if (PlayerInfo[client].respawn_time <= 50.0)
+			ShowSyncHudText(client, RespawnHud, "%s", respawnText);
 		}
+
+		// Timer expired, player is still dead
+		else if (!IsPlayerAlive(client))
+			TF2_RespawnPlayer(client);
 	}
-	else if (!IsPlayerAlive(client) && PlayerInfo[client].can_respawn)
+	
+	// Player is dead, but respawn timer has not activated yet
+	else if (!IsPlayerAlive(client) && PlayerInfo[client].CanRespawn && !PlayerInfo[client].Respawning)
 	{
-		if (PlayerInfo[client].respawn_delay <= GetGameTime())
+		if (PlayerInfo[client].RespawnDelay.Expired())
 		{
-			PlayerInfo[client].respawn_tick = GetGameTime() + 0.5;
-			PlayerInfo[client].respawning = true;
+			PlayerInfo[client].Respawning = true;
+			//PlayerInfo[client].CanRespawn = false;
+			PlayerInfo[client].RespawnTimer.Continue(); // Unpause our respawn timer
 		}
 	}
-	if (game.state == RoundState_RoundRunning && PlayerInfo[client].hud_refresh_tick <= GetGameTime())
+	if (Game.State == RoundState_RoundRunning && PlayerInfo[client].HudTick.Expired())
 	{
 		char InfoText[64];
 		int team = GetClientTeam(client);
@@ -711,23 +696,22 @@ public Action OnPlayerRunCmd(int client)
 		{
 			if (team == 2)
 			{
-				Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", game.team_score[team], game.team_score[3], game.max_score, game.flag.active ? "Active" : "Inactive");
+				FormatEx(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", Game.TeamScore[team], Game.TeamScore[3], Game.MaxScore, Game.Flag.Active ? "Active" : "Inactive");
 				SetHudTextParams(-1.0, 0.18, 0.5, 255, 0, 0, 255);
 			}
 			else if (team == 3)
 			{
-				Format(InfoText, sizeof InfoText, "BLU: %i | RED: %i\nScore to win: %i\nFlag Status: %s", game.team_score[team], game.team_score[2], game.max_score, game.flag.active ? "Active" : "Inactive");
+				Format(InfoText, sizeof InfoText, "BLU: %i | RED: %i\nScore to win: %i\nFlag Status: %s", Game.TeamScore[team], Game.TeamScore[2], Game.MaxScore, Game.Flag.Active ? "Active" : "Inactive");
 				SetHudTextParams(-1.0, 0.18, 0.5, 0, 110, 255, 255);
 			}
 			ShowSyncHudText(client, ScoreHud, "%s", InfoText);
 		}
 		else if (team == 1 || team == 0)
 		{
-			Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", game.team_score[2], game.team_score[3], game.max_score, game.flag.active ? "Active" : "Inactive");
+			Format(InfoText, sizeof InfoText, "RED: %i | BLU: %i\nScore to win: %i\nFlag Status: %s", Game.TeamScore[2], Game.TeamScore[3], Game.MaxScore, Game.Flag.Active ? "Active" : "Inactive");
 			SetHudTextParams(-1.0, 0.18, 0.5, 255, 255, 255, 255);
 			ShowSyncHudText(client, ScoreHud, "%s", InfoText);
 		}
-		PlayerInfo[client].hud_refresh_tick = GetGameTime() + 0.5;
 	}
 
 	return Plugin_Continue;
@@ -740,9 +724,9 @@ Helper Functions
 
 void SetupRespawnsForFlagTeam(int team)
 {
+	FClient client;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		FClient client;
 		client.Set(i);
 
 		if (client.Valid())
@@ -750,12 +734,12 @@ void SetupRespawnsForFlagTeam(int team)
 			if (client.GetTeam() == team)
 			{
 				if (client.Alive())
-					PlayerInfo[i].can_respawn = true;
+					PlayerInfo[i].CanRespawn = true;
 				else
 				{
-					PlayerInfo[i].respawn_delay = GetGameTime() + 0.1;
-					PlayerInfo[i].respawn_time = RespawnTimeFlag.FloatValue;
-					PlayerInfo[i].can_respawn = true;
+					PlayerInfo[i].RespawnDelay.Set(0.1, false);
+					PlayerInfo[i].RespawnTimer.Set(RespawnTimeFlag.FloatValue);
+					PlayerInfo[i].CanRespawn = true;
 				}
 			}
 		}
@@ -764,19 +748,19 @@ void SetupRespawnsForFlagTeam(int team)
 
 bool CheckRespawnTime(FPlayerInfo player)
 {
-	if (1.0 <= player.respawn_time < 2.0)
+	if (1.0 <= player.RespawnTimer.GetTimeRemaining() < 2.0)
 		return true;
 	return false;
 }
 
 void PlaySoundToAllClients(const char[] sound, int team = 0)
 {
+	//FClient client;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		FClient client;
-		client.Set(i);
+		//client.Set(i);
 
-		if (client.Valid())
+		if (IsClientInGame(i))
 		{
 			if (team < 2)
 				EmitSoundToClient(i, sound);

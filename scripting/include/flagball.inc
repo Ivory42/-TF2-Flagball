@@ -58,118 +58,99 @@ Handle RespawnHud;
 
 enum struct FTeamFlag
 {
-	// entity referenced by this flag
-	FObject entity;
-	int team;
-	bool away;
-	bool active;
+	FObject Entity; // entity referenced by this flag
+	int Team;		// Team this flag is carried by
+	bool Away;		// Is the flag not being carried and counting down the reset
+	bool Active;	// Is the flag enabled for disabled
 
+	// Returns the object reference of this flag
+	FObject GetObject()
+	{
+		return this.Entity;
+	}
+
+	// Sets the object reference of this flag
 	void Set(int reference)
 	{
-		this.entity.ref = reference;
+		this.Entity.Set(reference);
 	}
 
 	void Reset()
 	{
-		if (this.entity.Valid())
-		{
-			this.entity.Input("ForceReset");
-			this.SetNeutral();
-		}
+		this.GetObject().Input("ForceReset");
+		this.SetNeutral();
 	}
 
 	void SetNeutral()
 	{
-		if (this.entity.Valid())
-		{
-			SetVariantInt(0);
-			this.entity.Input("SetTeam");
-		}
+		SetVariantInt(0);
+		this.GetObject().Input("SetTeam");
 	}
 
 	void Respawn(FVector pos, bool reset)
 	{
-		if (this.entity.Valid())
-		{
-			this.entity.Teleport(pos, ConstructRotator(), ConstructVector());
+		this.GetObject().Teleport(pos, ConstructRotator(), ConstructVector());
 
-			if (reset)
-				this.entity.Input("Disable");
-		}
+		if (reset)
+			this.GetObject().Input("Disable");
 	}
 }
 
 enum struct FGameInstance
 {
-	FClient carrier;
-	FTeamFlag flag;
+	FClient Carrier; // Player carrying the flag
+	FTeamFlag Flag;  // Flag reference
 
-	RoundState state;
-	bool carrier_move;
+	RoundState State; // Game round state
+	bool CarrierMove; // Is the carrier required to move
 
-	int max_score;
-	int ring_height;
-	int team_unbalanced;
+	int MaxScore; // Score limit for the round
+	int RingHeight; // Max height of the ring displayed to the carrier when needing to move
+	int TeamUnbalanced; // Which team is unbalanced
 
-	int team_score[MAXTEAMS];
-	bool has_flag[MAXTEAMS];
+	int TeamScore[MAXTEAMS]; // Score for each team
+	bool HasFlag[MAXTEAMS]; // Which team has the flag
 
-	float alarm_delay;
-	float balance_delay;
-	float check_balance_delay;
+	FTimer AlarmDelay; // Timer for the alarm when a team is nearing the score limit
+	FTimer BalanceDelay; // Auto balance timer before balancing teams
+	FTimer CheckBalanceDelay; // When to check for team imbalance
 
 	//carrier settings
-	float carrier_traveldist;		//Distance the carrier must travel to keep the flag
-	float carrier_travelinterval;	//How long the carrier has to travel beyond the travel threshold
-	float carrier_traveltick;		//How frequent the travel distance is checked
-	float carrier_checktime;
-	FVector carrier_lastpos;
+	float CarrierTravelDist;		// Distance the carrier must travel to keep the flag
+	FTimer CarrierTravelInterval;	// How long the carrier has to travel beyond the travel threshold
+	FTimer CarrierTravelTick;		// How frequent the travel distance is checked
+	FTimer CarrierCheckTime;		// Timer to check for when the player has the flag
+	FVector CarrierLastPos;			// Position carrier was in when move time was triggered. This is where the carrier must move away from
 
 	//Prevent round from ending
-	DynamicHook roundhook;
-	int hookid;
-	int hook_offset;
+	DynamicHook RoundHook;
+	int HookId;
+	int HookOffset;
+
+	FObject GetFlag()
+	{
+		return this.Flag.GetObject();
+	}
 }
-FGameInstance game;
+FGameInstance Game;
 
 enum struct FPlayerInfo
 {
-	int hold_time;
-	FObject glow;
-	int score;
+	int HoldTime; // Seconds that this player has held the flag for
+	FObject Glow; // Outline tied to this player
+	int Score;	  // Value this player's score should be offset by, based on the hold time
 
-	bool can_respawn;
-	bool respawning;
+	bool CanRespawn;
+	bool Respawning;
 
-	float respawn_delay;
-	float respawn_time;
-	float respawn_tick;
-	float hud_refresh_tick;
-	float check_time;
+	FTimer RespawnTimer; // Timer for controlling a player's respawn
+	FTimer RespawnDelay; // Delay before the respawn timer kicks in
+	//float RespawnTime;   // Actual time in seconds that a respawn should be
+	FTimer RespawnTick;   // How frequently to check for a respawn
+	FTimer HudTick;		 // Hud refresh rate
+	float CheckTime;	 // Not sure???
 }
 FPlayerInfo PlayerInfo[MAXPLAYERS+1];
-
-
-// Retrieves the player struct for this client
-stock FPlayerInfo GetPlayer(FClient client)
-{
-	FPlayerInfo info;
-	if (client.Valid())
-	{
-		int id = client.Get();
-		info = PlayerInfo[id];
-	}
-	return info;
-}
-
-stock void SetPlayer(FClient client, FPlayerInfo info)
-{
-	if (client.Valid())
-	{
-		int id = client.Get();
-		PlayerInfo[id] = info;
-	}
-}
 
 
 // Sets an outline on the given client
@@ -179,8 +160,8 @@ stock void OutlineClient(FClient client, FPlayerInfo player)
 	{
 		if(!GlowEnabled(client))
 		{
-			player.glow = CreateGlow(client);
-			if(player.glow.Valid())
+			player.Glow = CreateGlow(client);
+			if(player.Glow.Valid())
 			{
 				int color[4], team;
 				team = client.GetTeam();
@@ -191,7 +172,7 @@ stock void OutlineClient(FClient client, FPlayerInfo player)
 				}
 
 				SetVariantColor(color);
-				player.glow.Input("SetGlowColor");
+				player.Glow.Input("SetGlowColor");
 			}
 		}
 	}
@@ -204,7 +185,7 @@ stock FObject CreateGlow(FClient client)
 	if (client.Valid())
 	{
 		FObject reference;
-		reference = client.GetReference();
+		reference = client.GetObject();
 
 		char name[64];
 		reference.GetPropString(Prop_Data, "m_iName", name, sizeof name);
@@ -254,9 +235,10 @@ stock void CheckTeamBalance()
 	int TeamCount[MAXTEAMS] = {0, 0, 0, 0};
 	int Unbalance;
 	int limit = ImbalanceLimit.IntValue;
+
+	FClient client;
 	for (int player = 1; player <= MaxClients; player++)
 	{
-		FClient client;
 		client.Set(player);
 
 		if (client.Valid())
@@ -287,10 +269,10 @@ stock void CheckTeamBalance()
 	{
 		case 2:
 		{
-			if (game.balance_delay <= GetGameTime())
+			if (Game.BalanceDelay.Expired())
 			{
-				game.team_unbalanced = 3;
-				game.check_balance_delay = GetGameTime() + 5.0;
+				Game.TeamUnbalanced = 3;
+				Game.CheckBalanceDelay.Set(5.0);
 
 				MC_PrintToChatAll("{green}[FB]{default} Team imbalance detected, teams will be balanced in 5 seconds...");
 				//CreateTimer(0.2, TimerCheckBalance, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
@@ -298,17 +280,17 @@ stock void CheckTeamBalance()
 		}
 		case 3:
 		{
-			if (game.balance_delay <= GetGameTime())
+			if (Game.BalanceDelay.Expired())
 			{
-				game.team_unbalanced = 2;
-				game.check_balance_delay = GetGameTime() + 5.0;
+				Game.TeamUnbalanced = 2;
+				Game.CheckBalanceDelay.Set(5.0);
 
 				MC_PrintToChatAll("{green}[FB]{default} Team imbalance detected, teams will be balanced in 5 seconds...");
 				//CreateTimer(0.2, TimerCheckBalance, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 			}
 		}
 	}
-	game.balance_delay = GetGameTime() + 6.0;
+	Game.BalanceDelay.Set(6.0, false);
 }
 
 // The action of actually swithing players to balance the teams
@@ -319,16 +301,17 @@ stock bool BalanceTeams(int teamnum)
 
 	if (TeamsUnbalanced())
 	{
+		FClient client;
+
 		count = 1;
 		for (int i = 1; i <= MaxClients; i++)
 		{
-			FClient client;
 			client.Set(i);
 
 			if (client.Valid() && client.GetTeam() >= 2)
 			{
 				int team = client.GetTeam();
-				if (team != teamnum && i != game.carrier.Get())
+				if (team != teamnum && i != Game.Carrier.Get())
 				{
 					PlayerArray[count] = client;
 					count++;
@@ -355,8 +338,8 @@ stock bool BalanceTeams(int teamnum)
 	else //Teams are balanced
 	{
 		MC_PrintToChatAll("{green}[FB]{default} Teams have been balanced.");
-		game.team_unbalanced = 0;
-		game.check_balance_delay = FAR_FUTURE;
+		Game.TeamUnbalanced = 0;
+		Game.CheckBalanceDelay.Clear();
 	}
 	return false;
 }
@@ -364,9 +347,9 @@ stock bool BalanceTeams(int teamnum)
 stock bool TeamsUnbalanced()
 {
 	int TeamCount[MAXTEAMS] = {0, 0, 0, 0};
+	FClient client;
 	for (int player = 1; player <= MaxClients; player++)
 	{
-		FClient client;
 		client.Set(player);
 
 		if (client.Valid())
