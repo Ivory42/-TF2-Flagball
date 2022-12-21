@@ -1,0 +1,7 @@
+# Ignore everything
+
+*.exe
+*.json
+*.smx
+scripting/include/ilib.inc
+scripting/include/ilib/*
