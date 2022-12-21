@@ -18,4 +18,4 @@ The classic gamemode from Halo remade to fit TF2's gameplay flow and act as a re
 - `fb_carrier_ring_height` - How many layers should the travel ring have added above and below the player | Default: 3
 
 
-Requires SourceMod 1.11+ to compile
+Requires https://github.com/Ivory42/ilib to compile
